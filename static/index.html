@@ -1,0 +1,3173 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MASP — Climatização</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════
+   DESIGN SYSTEM
+═══════════════════════════════════════════════════ */
+:root {
+  --red: #E30613;
+  --red-dark: #b30510;
+  --red-muted: rgba(227,6,19,0.08);
+  --black: #0d0d0d;
+  --white: #ffffff;
+  --off-white: #f8f7f5;
+
+  --gray-50: #f5f4f2;
+  --gray-100: #eae8e4;
+  --gray-200: #d5d1cb;
+  --gray-300: #b0a99f;
+  --gray-400: #8c8278;
+  --gray-500: #6b6057;
+  --gray-700: #3d3630;
+  --gray-900: #1a1614;
+
+  --green: #16a34a;
+  --green-light: #dcfce7;
+  --amber: #d97706;
+  --amber-light: #fef3c7;
+  --blue: #2563eb;
+  --blue-light: #dbeafe;
+
+  --panel: #ffffff;
+  --border: #e8e4de;
+  --border-strong: #d0ccc5;
+
+  --radius: 3px;
+  --radius-md: 6px;
+
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'Space Grotesk', sans-serif;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow: 0 4px 12px rgba(0,0,0,.06), 0 2px 4px rgba(0,0,0,.04);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,.1), 0 4px 8px rgba(0,0,0,.05);
+
+  /* Variáveis de compatibilidade usadas em componentes de revisão/alias */
+  --surface: var(--gray-50);
+  --bg:      var(--white);
+  --accent:  var(--red);
+  --yellow:  #f59e0b;
+
+  /* ═══════════════════════════════════════════════════
+     PALETA UNIFICADA PARA GRÁFICOS
+     Sincronizada com a identidade visual do dashboard
+  ═══════════════════════════════════════════════════ */
+  
+  /* Padrões normativos de climatização */
+  --color-ibram:   #E30613;   /* Vermelho — identidade MASP */
+  --color-masp:    #f59e0b;   /* Âmbar — padrão mais exigente */
+  --color-bizot:   #2563eb;   /* Azul — alinhado com --blue */
+
+  /* Estados de conformidade */
+  --color-conf-high:   #16a34a;  /* ≥75% — verde */
+  --color-conf-med:    #d97706;  /* 60–75% — âmbar */
+  --color-conf-low:    #E30613;  /* <60% — vermelho */
+
+  /* Variantes com transparência para preenchimento */
+  --color-ibram-fill:    rgba(227, 6, 19, 0.07);
+  --color-masp-fill:     rgba(245, 158, 11, 0.07);
+  --color-bizot-fill:    rgba(37, 99, 235, 0.07);
+  --color-conf-high-fill: rgba(22, 163, 74, 0.06);
+  --color-conf-med-fill:  rgba(217, 119, 6, 0.06);
+
+  /* Cores auxiliares para elementos Canvas e tipografia */
+  --gray-text: #8c8278;      /* Text labels em gráficos */
+  --gray-axis: #a8a29e;      /* Axis titles (mais clara) */
+  --gray-grid: #e7e5e4;      /* Grid lines */
+  --gray-border: #e8e4de;    /* Borders */
+  --text-primary: #1a1614;   /* Texto primário (quase preto) */
+  --text-muted: #78716c;     /* Texto muted */
+  --black: #0d0d0d;          /* Preto (identidade MASP) */
+  --white: #ffffff;          /* Branco */
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--sans);
+  background: var(--off-white);
+  color: var(--black);
+  min-height: 100vh;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* ═══════════════════════════════════════════════════
+   HEADER
+═══════════════════════════════════════════════════ */
+.site-header {
+  background: var(--black);
+  color: var(--white);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 32px;
+  padding: 0 40px;
+  height: 60px;
+  border-bottom: 2px solid var(--red);
+  position: sticky;
+  top: 0;
+  z-index: 200;
+}
+
+.logo {
+  font-family: var(--mono);
+  font-size: 1.1rem;
+  letter-spacing: 8px;
+  font-weight: 500;
+  color: var(--white);
+  text-transform: uppercase;
+  user-select: none;
+}
+.logo em { color: var(--red); font-style: normal; }
+
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--gray-400);
+  transition: background .3s;
+}
+.status-dot.ok { background: var(--green); box-shadow: 0 0 6px rgba(22,163,74,.4); }
+.status-dot.warn { background: var(--amber); }
+.status-dot.err { background: var(--red); }
+.status-label {
+  font-family: var(--mono);
+  font-size: .68rem;
+  letter-spacing: 1px;
+  color: var(--gray-300);
+}
+
+.header-meta {
+  font-family: var(--mono);
+  font-size: .62rem;
+  color: var(--gray-400);
+  letter-spacing: 1.5px;
+  text-align: right;
+  line-height: 1.7;
+  text-transform: uppercase;
+}
+
+/* ═══════════════════════════════════════════════════
+   LAYOUT SHELL
+═══════════════════════════════════════════════════ */
+.shell {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 28px 40px;
+}
+
+/* ═══════════════════════════════════════════════════
+   INFO BANNER
+═══════════════════════════════════════════════════ */
+.info-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--blue-light);
+  border-left: 3px solid var(--blue);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 11px 18px;
+  font-size: .8rem;
+  color: #1e3a8a;
+  margin-bottom: 20px;
+  font-family: var(--mono);
+  letter-spacing: .3px;
+}
+
+/* ═══════════════════════════════════════════════════
+   UPLOAD ZONE
+═══════════════════════════════════════════════════ */
+.upload-zone {
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 36px 40px;
+  text-align: center;
+  background: var(--panel);
+  transition: border-color .2s, background .2s, box-shadow .2s;
+  cursor: pointer;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+}
+.upload-zone:hover, .upload-zone.drag {
+  border-color: var(--red);
+  background: #fff9f9;
+  box-shadow: 0 0 0 4px rgba(227,6,19,.06);
+}
+.upload-icon {
+  font-size: 2rem;
+  margin-bottom: 12px;
+  opacity: .4;
+}
+.upload-zone h2 {
+  font-family: var(--mono);
+  font-size: .82rem;
+  font-weight: 400;
+  letter-spacing: 3px;
+  color: var(--gray-500);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.upload-zone p {
+  font-size: .85rem;
+  color: var(--gray-300);
+  margin-bottom: 18px;
+}
+.upload-zone .sub {
+  font-size: .72rem;
+  color: var(--gray-300);
+  margin-top: 10px;
+}
+.upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 26px;
+  background: var(--red);
+  color: white;
+  font-family: var(--mono);
+  font-size: .76rem;
+  letter-spacing: 2px;
+  border: none;
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: background .2s, transform .1s;
+  text-transform: uppercase;
+}
+.upload-btn:hover { background: var(--red-dark); }
+.upload-btn:active { transform: scale(.98); }
+
+.progress-wrap { margin-top: 20px; }
+.prog-bar { height: 3px; background: var(--gray-100); border-radius: 2px; overflow: hidden; margin-bottom: 12px; }
+.prog-fill { height: 100%; background: var(--red); width: 0; transition: width .3s; }
+.file-list { font-family: var(--mono); font-size: .75rem; color: var(--gray-700); text-align: left; max-width: 480px; margin: 0 auto; }
+.file-row { padding: 4px 0; }
+.file-row.ok { color: var(--green); }
+.file-row.err { color: var(--red); }
+
+/* ═══════════════════════════════════════════════════
+   FILTER BAR
+═══════════════════════════════════════════════════ */
+.filter-bar {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
+.filter-bar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.filter-bar-title {
+  font-family: var(--mono);
+  font-size: .65rem;
+  letter-spacing: 3px;
+  color: var(--gray-300);
+  text-transform: uppercase;
+}
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.fld label {
+  display: block;
+  font-family: var(--mono);
+  font-size: .63rem;
+  letter-spacing: 1.5px;
+  color: var(--gray-400);
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+.fld select, .fld input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: var(--white);
+  font-family: var(--sans);
+  font-size: .85rem;
+  border-radius: var(--radius);
+  color: var(--black);
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.fld select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238c8278' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+.fld select:focus, .fld input:focus {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(227,6,19,.08);
+}
+.filter-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+.filter-info {
+  font-family: var(--mono);
+  font-size: .65rem;
+  color: var(--gray-300);
+  margin-top: 10px;
+  letter-spacing: .3px;
+}
+
+/* ═══════════════════════════════════════════════════
+   BUTTONS
+═══════════════════════════════════════════════════ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 20px;
+  font-family: var(--mono);
+  font-size: .72rem;
+  letter-spacing: 1.5px;
+  border: none;
+  cursor: pointer;
+  transition: all .15s;
+  border-radius: var(--radius);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.btn:hover { opacity: .85; }
+.btn:active { transform: scale(.98); }
+.btn-primary { background: var(--red); color: white; }
+.btn-primary:hover { background: var(--red-dark); opacity: 1; }
+.btn-ghost { background: transparent; border: 1px solid var(--border-strong); color: var(--gray-700); }
+.btn-ghost:hover { border-color: var(--gray-400); background: var(--gray-50); opacity: 1; }
+.btn-sm { padding: 6px 14px; font-size: .65rem; }
+
+/* ═══════════════════════════════════════════════════
+   METRICS STRIP
+═══════════════════════════════════════════════════ */
+.metrics-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+@media (max-width: 1200px) { .metrics-strip { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 900px)  { .metrics-strip { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 500px)  { .metrics-strip { grid-template-columns: 1fr; } }
+
+.metric-tile {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px 22px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow .2s, transform .2s;
+}
+.metric-tile:hover {
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+.metric-tile::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--red);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform .3s ease;
+}
+.metric-tile:hover::before { transform: scaleX(1); }
+.metric-tile .lbl {
+  font-family: var(--mono);
+  font-size: .6rem;
+  letter-spacing: 2px;
+  color: var(--gray-300);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.metric-tile .val {
+  font-family: var(--mono);
+  font-size: 2.2rem;
+  font-weight: 400;
+  color: var(--black);
+  line-height: 1;
+  letter-spacing: -1px;
+}
+.metric-tile .sub {
+  font-size: .72rem;
+  color: var(--gray-300);
+  margin-top: 6px;
+  font-family: var(--mono);
+}
+.metric-tile .trend {
+  position: absolute;
+  top: 18px; right: 18px;
+  font-size: 1.1rem;
+  opacity: .2;
+}
+
+/* ═══════════════════════════════════════════════════
+   TABS
+═══════════════════════════════════════════════════ */
+.tabs-nav {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+  overflow-x: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.tabs-nav::-webkit-scrollbar { display: none; }
+
+.tab-btn {
+  padding: 11px 22px;
+  font-family: var(--mono);
+  font-size: .68rem;
+  letter-spacing: 2px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--gray-400);
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+  margin-bottom: -1px;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+.tab-btn:hover { color: var(--black); }
+.tab-btn.active { color: var(--red); border-bottom-color: var(--red); }
+
+.tab-pane { display: none; animation: fadeUp .2s ease; }
+.tab-pane.active { display: block; }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══════════════════════════════════════════════════
+   CARDS
+═══════════════════════════════════════════════════ */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 22px 24px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.card-title {
+  font-family: var(--mono);
+  font-size: .65rem;
+  letter-spacing: 2.5px;
+  color: var(--gray-300);
+  text-transform: uppercase;
+  margin-bottom: 18px;
+}
+.card-header .card-title { margin-bottom: 0; }
+.chart-wrap { position: relative; height: 280px; }
+.chart-wrap-tall { position: relative; height: 400px; }
+.chart-note {
+  font-size: .72rem;
+  color: var(--gray-300);
+  font-family: var(--mono);
+  margin: -10px 0 14px;
+  letter-spacing: .3px;
+}
+
+/* ── ÍCONE DE INFORMAÇÃO + POPOVER ───────────────────── */
+.info-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--gray-200);
+  color: var(--gray-400);
+  font-size: .65rem;
+  font-family: var(--mono);
+  font-weight: 600;
+  font-style: normal;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color .15s, color .15s;
+  flex-shrink: 0;
+}
+.info-icon:hover, .info-icon-wrap.open .info-icon {
+  border-color: var(--gray-400);
+  color: var(--black);
+}
+.info-popover {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 280px;
+  max-width: calc(100vw - 24px);
+  background: var(--black);
+  color: var(--gray-200);
+  font-family: var(--mono);
+  font-size: .72rem;
+  line-height: 1.65;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 300;
+  letter-spacing: .2px;
+}
+.info-popover::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  background: var(--black);
+  transform: rotate(45deg);
+  border-radius: 2px 0 0 0;
+}
+.info-icon-wrap.open .info-popover { display: block; }
+.info-popover strong {
+  display: block;
+  color: var(--white);
+  margin-bottom: 6px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-size: .65rem;
+}
+.info-popover ul {
+  margin: 6px 0 0 0;
+  padding-left: 14px;
+}
+.info-popover li { margin-bottom: 4px; }
+.info-popover .ip-swatch {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+/* ═══════════════════════════════════════════════════
+   PROGRESS BARS
+═══════════════════════════════════════════════════ */
+.prog-item { margin-bottom: 22px; }
+.prog-item:last-child { margin-bottom: 0; }
+.prog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 7px;
+}
+.prog-name { font-size: .85rem; font-weight: 500; color: var(--black); }
+.prog-pct {
+  font-family: var(--mono);
+  font-size: .95rem;
+  font-weight: 500;
+  letter-spacing: -0.5px;
+}
+.prog-track {
+  height: 8px;
+  background: var(--gray-100);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+.prog-fill-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 1.4s cubic-bezier(.4, 0, .2, 1);
+  position: relative;
+  overflow: hidden;
+}
+.prog-fill-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.3), transparent);
+  animation: shim 2.5s infinite;
+}
+@keyframes shim {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+.fill-green { background: var(--green); }
+.fill-amber { background: var(--amber); }
+.fill-red { background: var(--red); }
+.fill-blue { background: var(--blue); }
+
+/* ═══════════════════════════════════════════════════
+   TABLES
+═══════════════════════════════════════════════════ */
+.tbl-wrap { overflow-x: auto; border-radius: var(--radius); }
+table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+thead { border-bottom: 2px solid var(--gray-200); }
+th {
+  padding: 10px 14px;
+  text-align: left;
+  font-family: var(--mono);
+  font-size: .6rem;
+  letter-spacing: 1.5px;
+  color: var(--gray-400);
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: var(--gray-50);
+}
+th:first-child { border-radius: var(--radius) 0 0 0; }
+th:last-child { border-radius: 0 var(--radius) 0 0; }
+td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--gray-100);
+  color: var(--black);
+  vertical-align: middle;
+}
+tbody tr { transition: background .1s; }
+tbody tr:hover td { background: var(--gray-50); }
+tbody tr:last-child td { border-bottom: none; }
+
+/* ═══════════════════════════════════════════════════
+   BADGES
+═══════════════════════════════════════════════════ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  font-family: var(--mono);
+  font-size: .66rem;
+  border-radius: 20px;
+  font-weight: 500;
+  letter-spacing: .3px;
+}
+.badge-green { background: var(--green-light); color: #15803d; }
+.badge-amber { background: var(--amber-light); color: #92400e; }
+.badge-red { background: #fee2e2; color: #991b1b; }
+.badge-blue { background: var(--blue-light); color: #1e40af; }
+.badge-gray { background: var(--gray-100); color: var(--gray-500); }
+
+/* ═══════════════════════════════════════════════════
+   ALERTS TAB
+═══════════════════════════════════════════════════ */
+.alert-box {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-md);
+  padding: 18px 22px;
+  margin-bottom: 16px;
+}
+.alert-box-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.alert-box-title {
+  font-family: var(--mono);
+  font-size: .7rem;
+  letter-spacing: 2px;
+  color: #92400e;
+  text-transform: uppercase;
+}
+.alert-count-pill {
+  background: var(--amber);
+  color: white;
+  font-family: var(--mono);
+  font-size: .65rem;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+.alert-chevron {
+  margin-left: auto;
+  color: var(--amber);
+  transition: transform .25s;
+  font-size: .8rem;
+}
+.alert-chevron.collapsed { transform: rotate(-90deg); }
+.alert-list-wrap {
+  max-height: 360px;
+  overflow-y: auto;
+  margin-top: 14px;
+  transition: max-height .3s ease, opacity .3s;
+}
+.alert-list-wrap.collapsed {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  margin-top: 0;
+}
+.alert-item {
+  background: white;
+  border-left: 3px solid var(--amber);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 11px 14px;
+  margin-bottom: 7px;
+  box-shadow: var(--shadow-sm);
+}
+.alert-item:last-child { margin-bottom: 0; }
+.alert-item strong { font-family: var(--mono); font-size: .76rem; }
+.alert-item p { font-size: .74rem; color: var(--gray-500); margin-top: 4px; }
+
+/* ═══════════════════════════════════════════════════
+   HEATMAP
+═══════════════════════════════════════════════════ */
+.heatmap-scroll {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+  margin: 0 -2px;
+}
+.hm-month { min-width: 170px; }
+.hm-month-title {
+  font-family: var(--mono);
+  font-size: .62rem;
+  letter-spacing: 1px;
+  color: var(--gray-400);
+  text-align: center;
+  margin-bottom: 7px;
+  text-transform: uppercase;
+}
+.hm-wd {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  font-family: var(--mono);
+  font-size: .56rem;
+  color: var(--gray-300);
+  margin-bottom: 3px;
+}
+.hm-wd span { text-align: center; }
+.hm-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.hm-day {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: .58rem;
+  cursor: default;
+  transition: transform .1s;
+}
+.hm-day:hover { transform: scale(1.25); z-index: 10; position: relative; }
+.hm-day.empty { background: transparent; }
+.hm-l0 { background: var(--gray-100); color: var(--gray-300); }
+.hm-l1 { background: #fef9c3; color: #854d0e; }
+.hm-l2 { background: #fed7aa; color: #9a3412; }
+.hm-l3 { background: #fca5a5; color: #7f1d1d; }
+.hm-l4 { background: var(--red); color: white; font-weight: 600; }
+.hm-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  font-family: var(--mono);
+  font-size: .63rem;
+  color: var(--gray-300);
+  flex-wrap: wrap;
+}
+.hm-legend .box {
+  width: 11px; height: 11px;
+  border-radius: 2px;
+  display: inline-block;
+  vertical-align: middle;
+}
+.hm-tt {
+  position: fixed;
+  background: var(--black);
+  color: var(--white);
+  font-family: var(--mono);
+  font-size: .68rem;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  pointer-events: none;
+  display: none;
+  z-index: 999;
+  box-shadow: var(--shadow);
+}
+
+/* ═══════════════════════════════════════════════════
+   RELATÓRIO TAB
+═══════════════════════════════════════════════════ */
+.rep-sensor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+  margin: 10px 0 14px;
+}
+.rep-sensor-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+}
+.rep-sensor-item:hover { background: var(--gray-50); border-color: var(--border-strong); }
+.rep-sensor-item input { cursor: pointer; accent-color: var(--red); }
+.rep-check { cursor: pointer; accent-color: var(--red); }
+.rep-sensor-item label { font-size: .82rem; cursor: pointer; flex: 1; }
+.rep-label {
+  font-family: var(--mono);
+  font-size: .63rem;
+  letter-spacing: 1.5px;
+  color: var(--gray-400);
+  display: block;
+  margin: 18px 0 8px;
+  text-transform: uppercase;
+}
+.thresh-table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: 6px; }
+.thresh-table th {
+  font-family: var(--mono);
+  font-size: .6rem;
+  letter-spacing: 1px;
+  color: var(--gray-300);
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  background: var(--gray-50);
+}
+.thresh-table td { padding: 6px 8px; border-bottom: 1px solid var(--gray-100); }
+.thresh-table input[type=number] {
+  width: 60px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: .78rem;
+  text-align: center;
+  border-radius: var(--radius);
+}
+.thresh-table input[type=text] {
+  width: 120px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: .78rem;
+  border-radius: var(--radius);
+}
+
+/* TABELA DE DESVIOS */
+.desvios-table { 
+  width: 100%; 
+  border-collapse: collapse; 
+  font-size: .78rem; 
+  margin-top: 6px;
+}
+.desvios-table th {
+  font-family: var(--mono);
+  font-size: .6rem;
+  letter-spacing: 1px;
+  color: var(--gray-300);
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  background: var(--gray-50);
+}
+.desvios-table td { 
+  padding: 8px 10px; 
+  border-bottom: 1px solid var(--gray-100);
+  vertical-align: top;
+}
+.desvios-table tr:hover { 
+  background: rgba(227, 6, 19, 0.03);
+}
+.desvios-table .desvio-tipo {
+  font-family: var(--mono);
+  font-size: .65rem;
+  padding: 2px 6px;
+  border-radius: 2px;
+  display: inline-block;
+  margin-right: 3px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+.desvios-table .desvio-tipo.temp-acima {
+  background: rgba(227, 6, 19, 0.1);
+  color: var(--red);
+}
+.desvios-table .desvio-tipo.temp-abaixo {
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--blue);
+}
+.desvios-table .desvio-tipo.umid-acima {
+  background: rgba(217, 119, 6, 0.1);
+  color: var(--amber);
+}
+.desvios-table .desvio-tipo.umid-abaixo {
+  background: rgba(22, 163, 74, 0.1);
+  color: var(--green);
+}
+.desvios-table textarea {
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--sans);
+  font-size: .76rem;
+  resize: vertical;
+  line-height: 1.4;
+}
+.desvios-table textarea:focus {
+  outline: none;
+  border-color: var(--red);
+  box-shadow: 0 0 0 2px rgba(227, 6, 19, 0.1);
+}
+
+/* TOP 10 DESVIOS CARD */
+.top-desvios-card {
+  background: linear-gradient(135deg, rgba(227,6,19,.05) 0%, rgba(227,6,19,.02) 100%);
+  border: 1.5px solid var(--red);
+  border-radius: var(--radius-md);
+  padding: 20px 22px;
+  margin-bottom: 20px;
+}
+.top-desvios-card .card-title {
+  font-family: var(--mono);
+  font-size: .7rem;
+  letter-spacing: 2px;
+  color: var(--red);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+.desvios-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(227,6,19,.2);
+}
+.desvios-stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: .8rem;
+}
+.desvios-stat-num {
+  font-family: var(--mono);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--black);
+}
+.desvios-stat-label {
+  font-size: .75rem;
+  color: var(--gray-500);
+  line-height: 1.3;
+}
+.desvios-stat.crit .desvios-stat-num { color: var(--red); }
+.desvios-stat.warn .desvios-stat-num { color: var(--amber); }
+.desvios-stat.light .desvios-stat-num { color: var(--green); }
+
+.top-desvios-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .76rem;
+  margin-bottom: 12px;
+}
+.top-desvios-table th {
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: 1px;
+  color: var(--gray-300);
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(227,6,19,.2);
+  background: rgba(227,6,19,.03);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.top-desvios-table td {
+  padding: 10px;
+  border-bottom: 1px solid rgba(227,6,19,.1);
+  vertical-align: middle;
+}
+.top-desvios-table tr:hover {
+  background: rgba(227,6,19,.04);
+}
+.top-desvios-table .desvio-rank {
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--red);
+  width: 30px;
+  text-align: center;
+}
+.top-desvios-table .desvio-sensor {
+  font-weight: 600;
+  color: var(--black);
+}
+.top-desvios-table .desvio-magnitude {
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--black);
+  text-align: right;
+  min-width: 80px;
+}
+.top-desvios-table .desvio-status {
+  font-size: .7rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--gray-600);
+}
+.desvios-show-all {
+  font-size: .8rem;
+  text-align: center;
+  padding: 10px;
+  color: var(--red);
+  cursor: pointer;
+  border-top: 1px solid rgba(227,6,19,.2);
+  transition: background .15s;
+}
+.desvios-show-all:hover {
+  background: rgba(227,6,19,.05);
+}
+.desvios-show-all a {
+  color: var(--red);
+  text-decoration: underline;
+}
+
+/* ═══════════════════════════════════════════════════
+   GERENCIAR TAB
+═══════════════════════════════════════════════════ */
+.gtabs-nav {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0;
+}
+.gtab-btn {
+  padding: 10px 20px;
+  font-family: var(--mono);
+  font-size: .66rem;
+  letter-spacing: 1.5px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--gray-400);
+  cursor: pointer;
+  transition: all .15s;
+  margin-bottom: -1px;
+  text-transform: uppercase;
+}
+.gtab-btn:hover { color: var(--black); }
+.gtab-btn.active { color: var(--red); border-bottom-color: var(--red); }
+.gtab-pane { display: none; }
+.gtab-pane.active { display: block; }
+
+.action-btn {
+  padding: 4px 12px;
+  font-family: var(--mono);
+  font-size: .64rem;
+  letter-spacing: 1px;
+  border: 1px solid var(--border);
+  background: none;
+  cursor: pointer;
+  color: var(--gray-500);
+  transition: all .15s;
+  border-radius: var(--radius);
+  text-transform: uppercase;
+}
+.action-btn:hover { border-color: var(--blue); color: var(--blue); }
+.action-btn.del:hover { background: #fee2e2; border-color: #dc2626; color: #dc2626; }
+
+/* ═══════════════════════════════════════════════════
+   MODALS
+═══════════════════════════════════════════════════ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(3px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-box {
+  background: #fff;
+  padding: 32px;
+  width: min(580px, 92vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  border-top: 3px solid var(--red);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  animation: modalIn .2s ease;
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.modal-title {
+  font-family: var(--mono);
+  font-size: .78rem;
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.modal-sub { font-size: .8rem; color: var(--gray-400); margin-bottom: 20px; }
+
+/* ── REVISÃO DE SENSORES ────────────────────────── */
+.review-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.review-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.review-badge-new {
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--yellow, #f59e0b22);
+  color: var(--yellow, #f59e0b);
+  border: 1px solid currentColor;
+  text-transform: uppercase;
+}
+.review-nome {
+  font-family: var(--mono);
+  font-size: .88rem;
+  font-weight: 600;
+  color: var(--black);
+  flex: 1;
+}
+.review-predio-tag {
+  font-size: .72rem;
+  color: var(--gray-400);
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.review-opts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.review-opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
+  font-size: .82rem;
+  transition: border-color .15s, background .15s;
+  flex: 1;
+  min-width: 160px;
+}
+.review-opt:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.review-opt input[type=radio] { accent-color: var(--accent); }
+.review-merge-select {
+  margin-top: 8px;
+  display: none;
+}
+.review-merge-select.show { display: block; }
+.review-merge-select select {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--black);
+  font-size: .83rem;
+}
+
+/* ── ALIASES ────────────────────────────────────────── */
+.alias-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: .82rem;
+}
+.alias-row span { flex: 1; color: var(--black); }
+.alias-del {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--gray-400);
+  font-size: .9rem;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color .15s, background .15s;
+}
+.alias-del:hover { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
+.alias-chip {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: .72rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--gray-300);
+  margin: 1px 2px;
+  vertical-align: middle;
+}
+
+.csv-preview {
+  font-family: var(--mono);
+  font-size: .63rem;
+  background: var(--gray-50);
+  padding: 10px;
+  overflow: auto;
+  max-height: 72px;
+  white-space: pre;
+  margin: 10px 0 18px;
+  border: 1px solid var(--border);
+  color: var(--gray-700);
+  border-radius: var(--radius);
+}
+.modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+
+/* ═══════════════════════════════════════════════════
+   FOOTER
+═══════════════════════════════════════════════════ */
+.site-footer {
+  border-top: 1px solid var(--border);
+  padding: 18px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: .62rem;
+  color: var(--gray-300);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-top: 16px;
+}
+.site-footer button {
+  background: none;
+  border: 1px solid var(--border);
+  padding: 6px 14px;
+  font-family: var(--mono);
+  font-size: .62rem;
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: all .15s;
+  border-radius: var(--radius);
+  letter-spacing: 1px;
+}
+.site-footer button:hover { border-color: var(--red); color: var(--red); }
+
+/* ═══════════════════════════════════════════════════
+   UTILITIES
+═══════════════════════════════════════════════════ */
+.hidden { display: none !important; }
+
+.loading-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(13,13,13,.65);
+  backdrop-filter: blur(2px);
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
+}
+.loading-overlay.show { display: flex; }
+.spinner-box {
+  background: white;
+  padding: 40px 52px;
+  text-align: center;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+.spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--gray-100);
+  border-top-color: var(--red);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner-box p {
+  font-family: var(--mono);
+  font-size: .7rem;
+  letter-spacing: 2px;
+  color: var(--gray-400);
+}
+
+/* ═══════════════════════════════════════════════════
+   CHIP SELECTOR DE PONTOS
+═══════════════════════════════════════════════════ */
+.chip-section {
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.chip-section-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.chip-section-lbl {
+  font-family: var(--mono); font-size: .6rem;
+  letter-spacing: 2px; color: var(--gray-400); text-transform: uppercase;
+}
+.chip-section-acts { display: flex; align-items: center; gap: 10px; }
+.chip-act-btn {
+  font-family: var(--mono); font-size: .58rem; letter-spacing: 1px;
+  text-transform: uppercase; cursor: pointer; color: var(--gray-400);
+  background: none; border: none; padding: 0; transition: color .1s;
+}
+.chip-act-btn:hover { color: var(--red); }
+.chip-act-sep { color: var(--gray-200); font-size: .7rem; }
+.chip-groups { display: flex; flex-direction: column; gap: 8px; }
+.chip-group-lbl {
+  font-family: var(--mono); font-size: .55rem; letter-spacing: 2px;
+  color: var(--gray-300); text-transform: uppercase; margin-bottom: 5px;
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  user-select: none;
+}
+.chip-group-lbl::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+.chip-group-lbl:hover { color: var(--gray-500); }
+.chip-group-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip-btn {
+  padding: 4px 12px; font-family: var(--sans); font-size: .78rem;
+  border: 1px solid var(--border); background: var(--white);
+  color: var(--gray-500); border-radius: 20px;
+  cursor: pointer; transition: all .12s; white-space: nowrap;
+  user-select: none;
+}
+.chip-btn:hover:not(.active) { border-color: var(--gray-300); color: var(--black); }
+.chip-btn.active {
+  background: var(--red); border-color: var(--red);
+  color: var(--white);
+}
+
+/* ═══════════════════════════════════════════════════
+   SEGMENTED CONTROL DE PERÍODO
+═══════════════════════════════════════════════════ */
+.seg-ctrl {
+  display: inline-flex;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; width: 100%;
+}
+.seg-btn {
+  flex: 1; padding: 7px 10px;
+  font-family: var(--sans); font-size: .8rem;
+  border: none; border-right: 1px solid var(--border);
+  background: var(--white); color: var(--gray-500);
+  cursor: pointer; transition: all .12s; white-space: nowrap;
+  text-align: center;
+}
+.seg-btn:last-child { border-right: none; }
+.seg-btn:hover:not(.active) { background: var(--gray-50); color: var(--black); }
+.seg-btn.active { background: var(--black); color: var(--white); font-weight: 500; }
+
+/* ═══════════════════════════════════════════════════
+   DATE RANGE UNIFICADO
+═══════════════════════════════════════════════════ */
+.date-range {
+  display: flex; align-items: center; gap: 4px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 0 10px; background: var(--white);
+  transition: border-color .15s, box-shadow .15s;
+  width: 100%;
+}
+.date-range:focus-within {
+  border-color: var(--red); box-shadow: 0 0 0 3px rgba(227,6,19,.08);
+}
+.date-range-sep {
+  font-family: var(--mono); font-size: .75rem;
+  color: var(--gray-300); flex-shrink: 0; padding: 0 2px;
+}
+.date-range input[type=date] {
+  border: none; background: none; outline: none;
+  font-family: var(--sans); font-size: .83rem; color: var(--black);
+  padding: 7px 0; flex: 1; min-width: 0;
+}
+
+/* ═══════════════════════════════════════════════════
+   LINHA DE CONTROLES (PERÍODO + DATAS + AÇÕES)
+═══════════════════════════════════════════════════ */
+.filter-controls-row {
+  display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap;
+}
+.filter-controls-row .fld { flex-shrink: 0; }
+.filter-controls-row .fld:first-child { min-width: 260px; flex: 1; }
+.filter-controls-row .fld:nth-child(2) { min-width: 240px; flex: 1.5; }
+.filter-controls-row .filter-actions { flex-shrink: 0; margin-left: auto; }
+
+
+/* ═══════════════════════════════════════════════════
+   BADGES DE OCORRÊNCIA
+═══════════════════════════════════════════════════ */
+.badge-manutencao    { background:#e0f2fe; color:#075985; }
+.badge-falha         { background:#fee2e2; color:#991b1b; }
+.badge-obra          { background:#fef9c3; color:#854d0e; }
+.badge-deslocado     { background:#f3e8ff; color:#6b21a8; }
+.badge-verbal        { background:#f1f5f9; color:#475569; }
+.badge-sistema       { background:#dbeafe; color:#1e40af; }
+.badge-grupo         { background:#dcfce7; color:#15803d; }
+.badge-email         { background:#fce7f3; color:#9d174d; }
+
+/* ── CHIPS DE SELEÇÃO DE SENSORES ── */
+.ocorr-chip {
+  display: inline-block;
+  padding: 6px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 20px;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  cursor: pointer;
+  background: var(--white);
+  color: var(--gray-500);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+.ocorr-chip:hover {
+  border-color: var(--gray-400);
+  color: var(--black);
+}
+.ocorr-chip.active {
+  background: var(--red);
+  border-color: var(--red);
+  color: var(--white);
+  font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════
+   RELATÓRIO — PASSO A PASSO
+═══════════════════════════════════════════════════ */
+.rep-step {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 28px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--border);
+}
+.rep-step:last-of-type { border-bottom: none; margin-bottom: 0; }
+.rep-step--complete .rep-step-num { background: var(--green); }
+.rep-step-num {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--black);
+  color: var(--white);
+  font-family: var(--mono);
+  font-size: .72rem;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.rep-step-body { flex: 1; min-width: 0; }
+.rep-step-title {
+  font-size: .88rem;
+  font-weight: 600;
+  color: var(--black);
+  margin-bottom: 3px;
+}
+.rep-step-sub {
+  font-size: .78rem;
+  color: var(--gray-400);
+  margin-bottom: 16px;
+  font-family: var(--mono);
+  letter-spacing: .2px;
+}
+.rep-padrao-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+@media (max-width: 900px) { .rep-padrao-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 500px) { .rep-padrao-grid { grid-template-columns: 1fr; } }
+.rep-padrao-card {
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+  background: var(--white);
+  display: block;
+  position: relative;
+}
+.rep-padrao-card:hover {
+  border-color: var(--gray-300);
+  background: var(--gray-50);
+}
+.rep-padrao-card--active {
+  border-color: var(--red) !important;
+  background: var(--red-muted) !important;
+  box-shadow: 0 0 0 3px rgba(227,6,19,.07);
+}
+.rep-padrao-card--active::after {
+  content: '✓';
+  position: absolute;
+  top: 10px; right: 12px;
+  color: var(--red);
+  font-size: .8rem;
+  font-weight: 700;
+  font-family: var(--mono);
+}
+.rep-padrao-sigla {
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--black);
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+.rep-padrao-range {
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--gray-500);
+  margin-bottom: 8px;
+  letter-spacing: .3px;
+}
+.rep-padrao-desc {
+  font-size: .74rem;
+  color: var(--gray-400);
+  line-height: 1.5;
+}
+
+/* ── LEGENDA HTML DO GRÁFICO DE CONFORMIDADE TEMPORAL ──── */
+.mensal-expo-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 2px 4px;
+  font-family: var(--mono);
+  font-size: .62rem;
+  color: var(--gray-400);
+  letter-spacing: .3px;
+}
+.mleg-item { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.mleg-sw   { width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0; }
+.mleg-line { width: 18px; height: 2px; border-radius: 1px; flex-shrink: 0; display: inline-block; }
+.mleg-hatch {
+  width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0;
+  background: repeating-linear-gradient(45deg,
+    rgba(227,6,19,.28) 0px, rgba(227,6,19,.28) 2px,
+    transparent 2px, transparent 5px);
+}
+.mleg-strip {
+  width: 22px; height: 5px; border-radius: 2px; flex-shrink: 0;
+  background: linear-gradient(to right, rgba(227,6,19,.2), rgba(227,6,19,.6));
+}
+
+/* ═══════════════════════════════════════════════════
+   RELATÓRIO — CAPA E INSTRUÇÕES
+═══════════════════════════════════════════════════ */
+.report-cover {
+  page-break-after: always;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, var(--off-white) 0%, var(--white) 100%);
+  border-bottom: 4px solid var(--red);
+  padding: 40px;
+}
+
+.report-cover-logo {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--gray-500);
+  margin-bottom: 60px;
+  text-transform: uppercase;
+}
+
+.report-cover-title {
+  font-family: var(--sans);
+  font-size: 48px;
+  font-weight: 700;
+  color: var(--black);
+  margin-bottom: 16px;
+  line-height: 1.2;
+}
+
+.report-cover-subtitle {
+  font-family: var(--sans);
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--gray-500);
+  margin-bottom: 60px;
+  max-width: 600px;
+}
+
+.report-cover-meta {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--gray-400);
+  margin-top: auto;
+  padding-top: 40px;
+  border-top: 1px solid var(--gray-200);
+}
+
+.report-cover-date {
+  display: block;
+  margin-top: 8px;
+}
+
+.report-page {
+  page-break-before: always;
+  padding: 40px;
+  min-height: 100vh;
+  background: white;
+}
+
+.report-page-header {
+  margin-bottom: 40px;
+  padding-bottom: 24px;
+  border-bottom: 2px solid var(--red);
+}
+
+.report-page-title {
+  font-family: var(--sans);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--black);
+  margin-bottom: 8px;
+}
+
+.report-page-subtitle {
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--gray-500);
+  font-weight: 400;
+}
+
+.report-instructions {
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--gray-700);
+}
+
+.report-instructions h3 {
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--black);
+  margin-top: 24px;
+  margin-bottom: 12px;
+}
+
+.report-instructions ol,
+.report-instructions ul {
+  margin-left: 20px;
+  margin-bottom: 16px;
+}
+
+.report-instructions li {
+  margin-bottom: 8px;
+}
+
+.report-instructions .color-box {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  margin-right: 8px;
+  vertical-align: middle;
+  border: 1px solid var(--gray-200);
+}
+
+.report-instructions .color-legend {
+  display: flex;
+  gap: 20px;
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+
+.report-instructions .color-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.report-instructions code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--gray-50);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--gray-700);
+}
+
+.report-instructions strong {
+  color: var(--black);
+  font-weight: 600;
+}
+
+/* Print styles para relatório */
+@media print {
+  body { background: white; }
+  .report-cover,
+  .report-page { page-break-after: always; }
+  .report-page { margin: 0; padding: 0; min-height: auto; }
+  .chart-container { page-break-inside: avoid; }
+  table { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ──────────────────────────────────────────── -->
+<header class="site-header">
+  <div class="logo">MASP<em>_</em></div>
+  <div class="header-status">
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-label" id="statusLabel">CONECTANDO...</span>
+  </div>
+  <div class="header-meta">
+    MONITORAMENTO DE CLIMATIZAÇÃO<br>
+    PARÂMETROS IBRAM · MASP · BIZOT
+  </div>
+</header>
+
+<div class="shell">
+
+  <!-- INFO BANNER -->
+  <div class="info-banner" id="infoBanner">⏳ Conectando ao banco de dados...</div>
+
+  <!-- UPLOAD -->
+  <div class="upload-zone" id="uploadZone">
+    <div class="upload-icon">⬆</div>
+    <h2>Importar Dados</h2>
+    <p>Arraste arquivos JSON ou CSV do sistema de climatização, ou selecione manualmente.</p>
+    <button class="upload-btn" onclick="document.getElementById('fileIn').click()">
+      ▲ Selecionar Arquivo(s)
+    </button>
+    <input type="file" id="fileIn" accept=".json,.csv,.CSV" multiple style="display:none">
+    <p class="sub">Formatos aceitos: <strong>.json</strong> · <strong>.csv</strong> (testo, automação)</p>
+    <div class="progress-wrap hidden" id="progWrap">
+      <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+      <div class="file-list" id="fileList"></div>
+    </div>
+  </div>
+
+  <!-- FILTROS -->
+  <div class="filter-bar">
+    <div class="filter-bar-header">
+      <span class="filter-bar-title">Filtros</span>
+      <span class="filter-info" id="filterInfo">Carregando...</span>
+    </div>
+
+    <!-- PONTOS: chip selector sempre visível, agrupado por andar -->
+    <div class="chip-section">
+      <div class="chip-section-hdr">
+        <span class="chip-section-lbl">Pontos de Medição</span>
+        <div class="chip-section-acts">
+          <button class="chip-act-btn" onclick="selectAllPontos(true)">Todos</button>
+          <span class="chip-act-sep">·</span>
+          <button class="chip-act-btn" onclick="selectAllPontos(false)">Nenhum</button>
+        </div>
+      </div>
+      <div class="chip-groups" id="fPontoGroups">
+        <div style="font-family:var(--mono);font-size:.72rem;color:var(--gray-300)">Carregando pontos…</div>
+      </div>
+    </div>
+
+    <!-- CONTROLES: período + datas + ações -->
+    <div class="filter-controls-row">
+      <div class="fld">
+        <label>Período Expositivo</label>
+        <div class="seg-ctrl" id="fPeriodo">
+          <button class="seg-btn active" data-val="" onclick="selectSeg(this);applyFilters()">Todos</button>
+          <button class="seg-btn" data-val="1" onclick="selectSeg(this);applyFilters()">Expositivo</button>
+          <button class="seg-btn" data-val="0" onclick="selectSeg(this);applyFilters()">Fora de exp.</button>
+        </div>
+      </div>
+      <div class="fld">
+        <label>Intervalo de Datas</label>
+        <div class="date-range">
+          <input type="date" id="fDataIni">
+          <span class="date-range-sep">—</span>
+          <input type="date" id="fDataFim">
+        </div>
+      </div>
+      <div class="filter-actions">
+        <button class="btn btn-ghost" onclick="clearFilters()">Limpar</button>
+        <button class="btn btn-primary" onclick="applyFilters()">▶ Aplicar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MÉTRICAS -->
+  <div class="metrics-strip">
+    <div class="metric-tile">
+      <div class="trend">🏛</div>
+      <div class="lbl">Total IBRAM</div>
+      <div class="val" id="mTotal">–</div>
+      <div class="sub">18–22°C / 50–60% UR</div>
+    </div>
+    
+    <div class="metric-tile">
+      <div class="trend">🎨</div>
+      <div class="lbl">Total MASP</div>
+      <div class="val" id="mMasp">–</div>
+      <div class="sub">18–23°C / 45–55% UR</div>
+    </div>
+    <div class="metric-tile">
+      <div class="trend">✦</div>
+      <div class="lbl">Total Bizot</div>
+      <div class="val" id="mBizot">–</div>
+      <div class="sub">15–25°C / 40–60% UR</div>
+    </div>
+    <div class="metric-tile">
+      <div class="trend">📊</div>
+      <div class="lbl">Total Medições</div>
+      <div class="val" id="mMed">–</div>
+      <div class="sub">pontos ativos</div>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs-nav">
+    <button class="tab-btn active" onclick="switchTab('visao',this)">Visão Geral</button>
+    <button class="tab-btn" onclick="switchTab('pontos',this)">Pontos de Medição</button>
+    <button class="tab-btn" onclick="switchTab('exposicoes',this)">Exposições</button>
+    <button class="tab-btn" onclick="switchTab('alertas',this)">Alertas</button>
+    <button class="tab-btn" onclick="switchTab('ocorrencias',this)">Ocorrências</button>
+    <button class="tab-btn" onclick="switchTab('relatorio',this)">Relatório</button>
+    <button class="tab-btn" onclick="switchTab('gerenciar',this);loadGerenciar()">Gerenciar</button>
+  </div>
+
+  <!-- TAB: VISÃO GERAL ──────────────────────────────── -->
+  <div class="tab-pane active" id="tab-visao">
+    <div class="card">
+      <div class="card-title">Conformidade por Parâmetro</div>
+      <div class="prog-item">
+        <div class="prog-header">
+          <span class="prog-name">🏛 IBRAM — T (18–22°C) + UR (50–60%) combinados</span>
+          <span class="prog-pct" id="pct0">–</span>
+        </div>
+        <div class="prog-track"><div class="prog-fill-bar fill-green" style="width:0" data-w="0"></div></div>
+      </div>
+      <div class="prog-item">
+        <div class="prog-header">
+          <span class="prog-name">🎨 MASP — T (18–23°C) + UR (45–55%) combinados</span>
+          <span class="prog-pct" id="pct1">–</span>
+        </div>
+        <div class="prog-track"><div class="prog-fill-bar fill-red" style="width:0" data-w="0"></div></div>
+      </div>
+      <div class="prog-item">
+        <div class="prog-header">
+          <span class="prog-name">✦ Bizot — T (15–25°C) + UR (40–60%) combinados</span>
+          <span class="prog-pct" id="pct2">–</span>
+        </div>
+        <div class="prog-track"><div class="prog-fill-bar fill-blue" style="width:0" data-w="0"></div></div>
+      </div>
+    </div>
+
+    <!-- EVOLUÇÃO TEMPORAL — gráfico largo com granularidade -->
+    <div class="card">
+      <div class="card-title">Evolução Temporal de Conformidade</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <span class="chart-note" style="margin-bottom:0" id="mensalSubtitle">% de medições dentro das faixas</span>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <!-- Granularidade -->
+          <div class="seg-ctrl" id="segGranularidade" style="font-size:.72rem">
+            <button class="seg-btn" data-gran="hora"  onclick="selectSeg(this);loadMensal(window._lastFilters||{})">Hora a hora</button>
+            <button class="seg-btn" data-gran="dia"   onclick="selectSeg(this);loadMensal(window._lastFilters||{})">Dia a dia</button>
+            <button class="seg-btn active" data-gran="mes" onclick="selectSeg(this);loadMensal(window._lastFilters||{})">Mês a mês</button>
+            <button class="seg-btn" data-gran="ano"   onclick="selectSeg(this);loadMensal(window._lastFilters||{})">Ano a ano</button>
+          </div>
+          <!-- Padrão normativo -->
+          <div class="seg-ctrl" id="segMensal" style="font-size:.72rem">
+            <button class="seg-btn active" data-mensal="ibram" onclick="selectSeg(this);renderMensal()">IBRAM</button>
+            <button class="seg-btn" data-mensal="masp"  onclick="selectSeg(this);renderMensal()">MASP</button>
+            <button class="seg-btn" data-mensal="bizot" onclick="selectSeg(this);renderMensal()">Bizot</button>
+            <button class="seg-btn" data-mensal="todos" onclick="selectSeg(this);renderMensal()">Todos</button>
+          </div>
+          <div class="info-icon-wrap" id="infoMensal">
+            <i class="info-icon" onclick="toggleInfoPopover('infoMensal')">i</i>
+            <div class="info-popover">
+              <strong>Como ler este gráfico</strong>
+              Cada ponto representa o período selecionado (hora, dia, mês ou ano).
+              O eixo Y mostra o percentual de medições dentro da faixa do padrão selecionado.
+              <ul>
+                <li><span class="ip-swatch" style="background:#E30613"></span><b>Temp %</b> — leituras dentro da faixa de temperatura</li>
+                <li><span class="ip-swatch" style="background:#1d4ed8"></span><b>UR %</b> — leituras dentro da faixa de umidade relativa</li>
+                <li><span class="ip-swatch" style="background:#16a34a"></span><b>Total</b> — leituras em que <em>ambos</em> estão conformes</li>
+              </ul>
+              <div style="margin-top:8px;color:var(--gray-400)">
+                Linha verde tracejada = meta 90%. Laranja = limiar de atenção 70%.<br>
+                Hora a hora e dia a dia mostram variações intra-mensais.<br>
+                Limitado a 2.000 pontos por consulta.
+              </div>
+            </div>
+          </div>
+          <button
+            id="btnExportMensal"
+            onclick="exportMensalChart()"
+            title="Exportar gráfico como PNG"
+            style="
+              display:inline-flex;align-items:center;gap:5px;
+              padding:5px 12px;
+              font-family:var(--mono);font-size:.65rem;letter-spacing:1.5px;
+              border:1px solid var(--border-strong);border-radius:var(--radius);
+              background:var(--white);color:var(--gray-500);
+              cursor:pointer;transition:all .15s;white-space:nowrap;
+              text-transform:uppercase;
+            "
+            onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)'"
+            onmouseout="this.style.borderColor='var(--border-strong)';this.style.color='var(--gray-500)'"
+          >↓ PNG</button>
+        </div>
+      </div>
+      <div style="position:relative;height:420px"><canvas id="cMensal"></canvas></div>
+      <!-- Legenda fora do canvas — evita sobreposição com dados em 90–100% -->
+      <div class="mensal-expo-legend" id="mensalExpoLegend" style="display:none"></div>
+      <div style="margin-top:10px;padding:9px 14px;background:#fafaf9;border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:flex-start;gap:8px">
+        <span style="font-size:.9rem;flex-shrink:0">ℹ</span>
+        <span style="font-family:var(--mono);font-size:.68rem;color:var(--gray-400);line-height:1.6;letter-spacing:.2px">
+          Este gráfico sempre exibe <strong style="color:var(--gray-500)">todos os dados</strong> — o filtro de Período Expositivo não é aplicado aqui para manter a continuidade das curvas.
+          <span style="color:rgba(227,6,19,.8)">■</span> fundo sólido = período inteiramente expositivo &nbsp;·&nbsp;
+          <span style="color:rgba(227,6,19,.5)">▤</span> listrado = período misto (montagem ou desmontagem em andamento).
+          Passe o mouse sobre qualquer ponto para ver a proporção expositivo/fora de exposição naquele período.
+        </span>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Conformidade por Sensor — visão acumulada</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+          <span class="chart-note" style="margin-bottom:0">Barras horizontais ordenadas por conformidade de UR</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="seg-ctrl" id="segSensores" style="font-size:.72rem">
+              <button class="seg-btn active" data-sensores="ibram" onclick="selectSeg(this);renderSensores()">IBRAM</button>
+              <button class="seg-btn" data-sensores="masp"  onclick="selectSeg(this);renderSensores()">MASP</button>
+              <button class="seg-btn" data-sensores="bizot" onclick="selectSeg(this);renderSensores()">Bizot</button>
+            </div>
+            <div class="info-icon-wrap" id="infoSensores">
+              <i class="info-icon" onclick="toggleInfoPopover('infoSensores')">i</i>
+              <div class="info-popover">
+                <strong>Como ler este gráfico</strong>
+                Cada linha é um sensor. As barras mostram o percentual de leituras dentro da faixa do padrão selecionado.
+                <ul>
+                  <li><span class="ip-swatch" style="background:#E30613"></span><b>Temperatura %</b> — leituras dentro da faixa de temperatura</li>
+                  <li><span class="ip-swatch" style="background:#1d4ed8"></span><b>UR %</b> — leituras dentro da faixa de umidade relativa</li>
+                </ul>
+                <div style="margin-top:8px;color:var(--gray-400)">
+                  Sensores ordenados do menor para o maior índice de UR.<br>
+                  Linha verde tracejada = meta 90%.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="chart-wrap chart-wrap-tall"><canvas id="cSensores"></canvas></div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
+          <div class="card-title" style="margin-bottom:0">Não-Conformidade por Hora do Dia</div>
+          <div class="info-icon-wrap" id="infoHorario" style="margin-top:2px;flex-shrink:0">
+            <i class="info-icon" onclick="toggleInfoPopover('infoHorario')">i</i>
+            <div class="info-popover">
+              <strong>Como ler este gráfico</strong>
+              Cada barra representa uma hora do dia (00h–23h). A altura indica o percentual de leituras <em>fora</em> da faixa naquele horário.
+              <ul>
+                <li><span class="ip-swatch" style="background:#1d4ed8"></span><b>UR</b> — leituras fora da faixa de umidade do padrão selecionado</li>
+                <li><span class="ip-swatch" style="background:#E30613"></span><b>Temp</b> — leituras fora da faixa de temperatura do padrão selecionado</li>
+              </ul>
+              <div style="margin-top:8px;color:var(--gray-400)">
+                Picos em determinados horários indicam padrões de climatização — ex.: temperatura subindo durante o expediente ou umidade caindo à noite.<br>
+                Selecione um sensor específico para identificar anomalias pontuais.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+          <span class="chart-note" style="margin:0;flex:1;min-width:120px">% de leituras fora da faixa — identifica padrões diurnos/noturnos</span>
+          <select id="selHorarioSensor" style="font-family:var(--mono);font-size:.72rem;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--white);color:var(--black);cursor:pointer" onchange="loadHorario(window._lastFilters||{})">
+            <option value="">Todos os sensores</option>
+          </select>
+          <div class="seg-ctrl" id="segHorario" style="font-size:.72rem">
+            <button class="seg-btn active" data-horario="ibram" onclick="selectSeg(this);loadHorario(window._lastFilters||{})">IBRAM</button>
+            <button class="seg-btn" data-horario="masp"  onclick="selectSeg(this);loadHorario(window._lastFilters||{})">MASP</button>
+            <button class="seg-btn" data-horario="bizot" onclick="selectSeg(this);loadHorario(window._lastFilters||{})">Bizot</button>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas id="cHorario"></canvas></div>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
+          <div class="card-title" style="margin-bottom:0">Padrão Sazonal — Interno vs Externo</div>
+          <div class="info-icon-wrap" id="infoSazonal" style="margin-top:2px;flex-shrink:0">
+            <i class="info-icon" onclick="toggleInfoPopover('infoSazonal')">i</i>
+            <div class="info-popover">
+              <strong>Como ler este gráfico</strong>
+              A linha mostra a mediana de cada estação. A área sombreada é o intervalo interquartil (onde ficam 50% das leituras).
+              <ul>
+                <li><span class="ip-swatch" style="background:#E30613"></span><b>Interno</b> — média de todos os sensores internos</li>
+                <li><span class="ip-swatch" style="background:#6366f1"></span><b>Externo (Térreo)</b> — condições climáticas externas pelo datalogger</li>
+              </ul>
+              <div style="margin-top:8px;color:var(--gray-400)">
+                Estações (hemisfério sul): Verão (dez–fev), Outono (mar–mai), Inverno (jun–ago), Primavera (set–nov).<br>
+                Quanto mais a banda vermelha se mantém dentro da faixa do padrão selecionado, mais eficaz o sistema de climatização naquela estação.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+          <span class="chart-note" style="margin:0;flex:1;min-width:120px">Distribuição por estação do ano — hemisfério sul</span>
+          <div class="seg-ctrl" id="segSazonalCampo" style="font-size:.72rem">
+            <button class="seg-btn active" data-sazonal="temp" onclick="selectSeg(this);renderSazonal()">Temperatura</button>
+            <button class="seg-btn" data-sazonal="ur"   onclick="selectSeg(this);renderSazonal()">Umidade</button>
+          </div>
+          <div class="seg-ctrl" id="segSazonalPadrao" style="font-size:.72rem">
+            <button class="seg-btn active" data-padrao-sazonal="ibram"  onclick="selectSeg(this);renderSazonal()">IBRAM</button>
+            <button class="seg-btn" data-padrao-sazonal="masp"   onclick="selectSeg(this);renderSazonal()">MASP</button>
+            <button class="seg-btn" data-padrao-sazonal="bizot"  onclick="selectSeg(this);renderSazonal()">Bizot</button>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas id="cSazonal"></canvas></div>
+      </div>
+    </div>
+    <!-- CARD: PONTO DE ORVALHO ──────────────────────────── -->
+    <div class="card">
+      <div class="card-header">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="card-title" style="margin:0">Dinâmica do Ponto de Orvalho</span>
+          <div class="info-icon-wrap" id="infoOrvalho">
+            <i class="info-icon" onclick="toggleInfoPopover('infoOrvalho')">i</i>
+            <div class="info-popover" style="width:300px">
+              <strong>Como ler este gráfico</strong>
+              Mostra a evolução de três variáveis no período selecionado:
+              <ul style="margin-top:6px">
+                <li><b style="color:#f97316">━</b> <b>Temperatura</b> do ar (eixo esquerdo)</li>
+                <li><b style="color:#06b6d4">╌</b> <b>Umidade Relativa</b> (eixo direito)</li>
+                <li><b style="color:#1e3a5f">━</b> <b>Ponto de Orvalho</b> com área sombreada (eixo esquerdo)</li>
+              </ul>
+              <div style="margin-top:8px">
+                <strong>O risco de condensação</strong> ocorre quando a linha do Ponto de Orvalho
+                se aproxima da linha de Temperatura. Quanto menor a distância entre elas,
+                maior o risco de vapor d'água condensar nas superfícies do acervo.
+              </div>
+              <div style="margin-top:8px;color:var(--gray-400)">
+                A granularidade se ajusta ao período: ≤ 3 dias exibe médias horárias,
+                períodos maiores exibem médias diárias.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:var(--mono);font-size:.65rem;color:var(--gray-400);letter-spacing:1px">SENSOR</span>
+          <select id="selOrvalhoSensor"
+                  onchange="loadOrvalho(window._lastFilters||{})"
+                  style="font-family:var(--mono);font-size:.72rem;padding:5px 10px;
+                         border:1px solid var(--border);border-radius:var(--radius);
+                         background:var(--white);color:var(--black);cursor:pointer;
+                         min-width:200px">
+            <option value="">— selecione um sensor —</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="orvalhoWrap">
+        <div style="font-family:var(--mono);font-size:.75rem;color:var(--gray-400);
+                    padding:40px;text-align:center;letter-spacing:1px">
+          SELECIONE UM SENSOR PARA VISUALIZAR O PONTO DE ORVALHO
+        </div>
+      </div>
+    </div>
+
+
+  </div><!-- /tab-visao -->
+  <div class="tab-pane" id="tab-pontos">
+    <div class="card">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <span>Análise por Ponto de Medição</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:var(--mono);font-size:.7rem;color:var(--gray-400);letter-spacing:1px">PADRÃO</span>
+          <div class="seg-ctrl" id="segPadrão">
+            <button class="seg-btn active" data-padrao="ibram" onclick="selectSeg(this);renderPontosTable()">IBRAM</button>
+            <button class="seg-btn" data-padrao="masp"  onclick="selectSeg(this);renderPontosTable()">MASP</button>
+            <button class="seg-btn" data-padrao="bizot" onclick="selectSeg(this);renderPontosTable()">Bizot</button>
+          </div>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead id="tPontosHead">
+            <tr>
+              <th>Ponto</th><th>Andar</th><th>Status</th><th>Medições</th>
+              <th>Total</th><th>Temperatura</th><th>Umidade Rel.</th>
+              <th>T Média</th><th>UR Média</th>
+            </tr>
+          </thead>
+          <tbody id="tPontos"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Posicionamento T Médio × UR Média — Zona IBRAM</div>
+      <div class="chart-note">Cada ponto = sensor. Zonas: vermelho = IBRAM (18–22°C / 50–60%), laranja = MASP (18–23°C / 45–55% UR), azul = Bizot (15–25°C / 40–60%). Cor do ponto = conformidade MASP.</div>
+      <div class="chart-wrap chart-wrap-tall"><canvas id="cScatter"></canvas></div>
+    </div>
+  </div>
+
+  <!-- TAB: EXPOSIÇÕES ──────────────────────────────────── -->
+  <div class="tab-pane" id="tab-exposicoes">
+    <div class="card">
+      <div class="card-title">Conformidade Durante Períodos Expositivos</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Exposição</th><th>Período</th><th>Espaços</th><th>Medições</th>
+              <th>Total IBRAM</th><th>Total MASP</th><th>Total Bizot</th><th>Classificação</th>
+            </tr>
+          </thead>
+          <tbody id="tExposicoes"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Comparativo de Exposições</div>
+      <div class="chart-wrap"><canvas id="cExpoComp"></canvas></div>
+    </div>
+  </div>
+
+  <!-- TAB: ALERTAS ──────────────────────────────────────── -->
+  <div class="tab-pane" id="tab-alertas">
+    <div class="alert-box" id="alertBox">
+      <div class="alert-box-header" onclick="toggleAlerts()">
+        <span class="alert-box-title">⚠ Variação de Umidade &gt; 10% em 24h</span>
+        <span class="alert-count-pill" id="alertPill">–</span>
+        <span class="alert-count-pill" id="alertPill">–</span>
+        <button onclick="event.stopPropagation(); exportAlertasPDF()" title="Exportar tabela de alertas em PDF" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;border:1px solid var(--amber);border-radius:var(--radius);background:var(--amber-light);color:#92400e;cursor:pointer;transition:all .15s;text-transform:uppercase;margin-left:8px;" onmouseover="this.style.background='var(--amber)';this.style.color='white'" onmouseout="this.style.background='var(--amber-light)';this.style.color='#92400e'">↓ PDF</button>
+        <div class="info-icon-wrap" id="infoAlertas" style="margin-left:4px;margin-right:auto"
+             onclick="event.stopPropagation();toggleInfoPopover('infoAlertas')">
+          <i class="info-icon">i</i>
+          <div class="info-popover" style="width:300px">
+            <strong>Como ler os alertas</strong>
+            Cada alerta indica um evento em que a umidade relativa (UR) variou mais de
+            <b>10 pontos percentuais (p.p.)</b> dentro de um período de 24 horas num mesmo sensor.
+            <div style="margin-top:8px">
+              <strong>O que são pontos percentuais?</strong>
+              É a diferença direta entre dois valores de UR. Por exemplo: UR passou de
+              <b>22% para 94%</b> → variação de <b>72 p.p.</b> Não é uma variação relativa
+              (que seria 227%), mas sim a distância absoluta entre os dois valores.
+            </div>
+            <div style="margin-top:8px">
+              <strong>Por que isso importa?</strong>
+              Variações bruscas de umidade causam expansão e contração de materiais orgânicos
+              (papel, madeira, telas), podendo provocar danos mecânicos irreversíveis ao acervo,
+              mesmo que os valores absolutos de UR estejam dentro da faixa ideal.
+            </div>
+            <div style="margin-top:8px;color:var(--gray-400)">
+              Os alertas são ordenados por data mais recente.<br>
+              🎨 = evento ocorreu durante período expositivo.
+            </div>
+          </div>
+        </div>
+        <span class="alert-chevron" id="alertChev">▼</span>
+      </div>
+      <div class="alert-list-wrap" id="alertListWrap">
+        <div id="alertList"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Frequência de Alertas por Dia</div>
+      <div class="heatmap-scroll" id="heatmapWrap"></div>
+      <div class="hm-legend">
+        <span><span class="box hm-l0"></span> 0</span>
+        <span><span class="box hm-l1"></span> 1–2</span>
+        <span><span class="box hm-l2"></span> 3–5</span>
+        <span><span class="box hm-l3"></span> 6–10</span>
+        <span><span class="box hm-l4"></span> 11+</span>
+      </div>
+    </div>
+
+    <!-- Gráfico de umidade com marcadores de eventos -->
+    <div class="card" id="cardAlertasMarcadores" style="display:none">
+      <div class="card-header">
+        <span class="card-title" style="margin:0">Umidade ao Longo do Tempo — Eventos de Variação Brusca</span>
+        <div class="info-icon-wrap" id="infoAlertasMarcadores">
+          <i class="info-icon" onclick="toggleInfoPopover('infoAlertasMarcadores')">i</i>
+          <div class="info-popover" style="width:280px">
+            <strong>Como ler este gráfico</strong>
+            A linha mostra a evolução da umidade relativa no período.
+            Os <b style="color:#E30613">▲ triângulos vermelhos</b> marcam os momentos em que foi detectada
+            uma variação superior a 10 p.p. em 24h. Passe o mouse sobre um marcador para ver
+            os detalhes do evento — sensor, UR inicial, UR final e variação.
+          </div>
+        </div>
+      </div>
+      <div class="chart-note" style="margin-bottom:12px">
+        <b style="color:#36a2eb">━</b> Umidade Relativa média &nbsp;·&nbsp;
+        <b style="color:#E30613">▲</b> Variação &gt; 10 p.p. em 24h
+      </div>
+      <div class="chart-wrap chart-wrap-tall">
+        <canvas id="cAlertasMarcadores"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TAB: OCORRÊNCIAS ───────────────────────────────────── -->
+  <div class="tab-pane" id="tab-ocorrencias">
+    <div class="card">
+      <div class="card-header">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="card-title" style="margin:0">Ocorrências Registradas</span>
+          <div class="info-icon-wrap" id="infoOcorrencias">
+            <i class="info-icon" onclick="toggleInfoPopover('infoOcorrencias')">i</i>
+            <div class="info-popover" style="width:280px">
+              <strong>O que são ocorrências?</strong>
+              Registros de eventos que podem explicar desvios climáticos nos dados —
+              manutenções, falhas de equipamento, obras ou picos detectados automaticamente.
+              <div style="margin-top:8px">
+                Ocorrências são vinculadas a sensores e aparecem nos relatórios como
+                contexto para os dados fora do padrão.
+              </div>
+              <div style="margin-top:8px;color:var(--gray-400)">
+                <b style="color:#dc2626">⚡ automático</b> — detectado pelo sistema no upload.<br>
+                Demais tipos são inseridos manualmente pela equipe.
+              </div>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openOcorrenciaModal()">＋ Nova Ocorrência</button>
+      </div>
+
+      <!-- Filtros rápidos -->
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+                  padding:10px 0 14px;border-bottom:1px solid var(--border);margin-bottom:14px">
+        <span style="font-family:var(--mono);font-size:.68rem;color:var(--gray-400);letter-spacing:1px">FILTRAR</span>
+        <div class="seg-ctrl" id="segOcorrTipo">
+          <button class="seg-btn active" data-tipo="" onclick="selectSeg(this);filtrarOcorrencias()">Todos</button>
+          <button class="seg-btn" data-tipo="manutencao" onclick="selectSeg(this);filtrarOcorrencias()">Manutenção</button>
+          <button class="seg-btn" data-tipo="falha_equipamento" onclick="selectSeg(this);filtrarOcorrencias()">Falha</button>
+          <button class="seg-btn" data-tipo="obra" onclick="selectSeg(this);filtrarOcorrencias()">Obra</button>
+          <button class="seg-btn" data-tipo="pico_automatico" onclick="selectSeg(this);filtrarOcorrencias()">⚡ Automático</button>
+        </div>
+        <div class="seg-ctrl" id="segOcorrPredi">
+          <button class="seg-btn active" data-predio="" onclick="selectSeg(this);filtrarOcorrencias()">Todos os prédios</button>
+          <button class="seg-btn" data-predio="Lina" onclick="selectSeg(this);filtrarOcorrencias()">Lina</button>
+          <button class="seg-btn" data-predio="Pietro" onclick="selectSeg(this);filtrarOcorrencias()">Pietro</button>
+        </div>
+      </div>
+
+      <!-- Contador -->
+      <div id="ocorrContagemInfo" style="font-family:var(--mono);font-size:.72rem;
+           color:var(--gray-400);margin-bottom:10px;letter-spacing:.5px"></div>
+
+      <!-- Lista de ocorrências -->
+      <div id="ocorrListaWrap"></div>
+    </div>
+  </div>
+
+  <!-- TAB: RELATÓRIO ──────────────────────────────────── -->
+  <div class="tab-pane" id="tab-relatorio">
+    <div class="card">
+      <div class="card-title">Gerar Relatório para Comitê de Climatização</div>
+      
+      <div style="background:var(--blue-light);border-left:3px solid var(--blue);padding:10px 14px;border-radius:0 var(--radius) var(--radius) 0;margin-bottom:24px">
+        <p style="font-size:.84rem;color:#1e3a8a;margin-bottom:6px">
+          <strong>Período:</strong> O relatório usará as datas definidas nos filtros do topo da tela.
+        </p>
+        <p style="font-size:.8rem;color:#1e40af;font-family:var(--mono)">
+          ⚠ <strong>LIMITE DO GRÁFICO:</strong> A renderização suporta até 50.000 pontos contínuos. Períodos maiores que 1 ano terão seus gráficos de linha automaticamente amostrados para garantir a legibilidade.
+        </p>
+      </div>
+
+      <div class="rep-step">
+        <div class="rep-step-num">1</div>
+        <div class="rep-step-body">
+          <div class="rep-step-title">Padrão Normativo do Relatório</div>
+          <div class="rep-step-sub">Define quais faixas de conformidade serão exibidas e analisadas.</div>
+          
+          <div class="rep-padrao-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
+            <label class="rep-padrao-card rep-padrao-card--active" data-padrao="bizot" onclick="selectReportPadrao(this)">
+              <input type="radio" name="repPadrao" value="bizot" checked style="display:none">
+              <div class="rep-padrao-sigla">Bizot</div>
+              <div class="rep-padrao-range">15–25°C · 40–60% UR</div>
+              <div class="rep-padrao-desc">Referência internacional para acervos mistos</div>
+            </label>
+            <label class="rep-padrao-card" data-padrao="masp" onclick="selectReportPadrao(this)">
+              <input type="radio" name="repPadrao" value="masp" style="display:none">
+              <div class="rep-padrao-sigla">MASP</div>
+              <div class="rep-padrao-range">18–23°C · 45–55% UR</div>
+              <div class="rep-padrao-desc">Parâmetro interno de uso corrente</div>
+            </label>
+            <label class="rep-padrao-card" data-padrao="ibram" onclick="selectReportPadrao(this)">
+              <input type="radio" name="repPadrao" value="ibram" style="display:none">
+              <div class="rep-padrao-sigla">IBRAM</div>
+              <div class="rep-padrao-range">18–22°C · 50–60% UR</div>
+              <div class="rep-padrao-desc">Política Nacional de Museus</div>
+            </label>
+            <label class="rep-padrao-card" data-padrao="hibrido" onclick="selectReportPadrao(this)">
+              <input type="radio" name="repPadrao" value="hibrido" style="display:none">
+              <div class="rep-padrao-sigla" style="color:var(--blue)">HÍBRIDO</div>
+              <div class="rep-padrao-range">MASP + Bizot</div>
+              <div class="rep-padrao-desc">Aplica MASP no 1º Andar e Bizot no restante</div>
+            </label>
+            <label class="rep-padrao-card" data-padrao="custom" onclick="selectReportPadrao(this)">
+              <input type="radio" name="repPadrao" value="custom" style="display:none">
+              <div class="rep-padrao-sigla" style="font-size:.72rem;letter-spacing:1.5px">PERSONALIZADO</div>
+              <div class="rep-padrao-range">Faixas manuais</div>
+              <div class="rep-padrao-desc">Define limites individuais no Passo 3</div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- PASSO 2: Pontos de medição -->
+      <div class="rep-step">
+        <div class="rep-step-num">2</div>
+        <div class="rep-step-body">
+          <div class="rep-step-title">Pontos de Medição</div>
+          <div class="rep-step-sub">Selecione os espaços a serem incluídos no relatório.</div>
+          <div class="rep-sensor-grid" id="repSensores">
+            <span style="font-size:.8rem;color:var(--gray-300)">Carregando...</span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-ghost btn-sm" onclick="toggleAllSensors(true)">Todos</button>
+            <button class="btn btn-ghost btn-sm" onclick="toggleAllSensors(false)">Nenhum</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PASSO 3: Personalizado — só aparece quando selecionado -->
+      <div class="rep-step" id="repCustomStep" style="display:none">
+        <div class="rep-step-num">3</div>
+        <div class="rep-step-body">
+          <div class="rep-step-title">Faixas Personalizadas por Ponto</div>
+          <div class="rep-step-sub">Configure os limites individuais para cada sensor selecionado acima.</div>
+          <p id="repThreshHint" style="font-size:.8rem;color:var(--gray-300);margin-top:8px">Selecione pontos acima para configurar.</p>
+          <div class="tbl-wrap" style="margin-top:10px">
+            <table class="thresh-table" id="repThreshTable" style="display:none">
+              <thead>
+                <tr>
+                  <th>Ponto</th>
+                  <th>UR Mín %</th><th>UR Máx %</th>
+                  <th>T Mín °C</th><th>T Máx °C</th>
+                  <th>Equipamento (CA-XX)</th>
+                  <th>Notas / Observações</th>
+                </tr>
+              </thead>
+              <tbody id="repThreshTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    <!-- PASSO 4: Personalizar Conteúdo do Relatório -->
+
+      <div class="rep-step" id="repCustomContentStep">
+        <div class="rep-step-num">4</div>
+        <div class="rep-step-body">
+          <div class="rep-step-title">Personalizar Conteúdo e Gráficos</div>
+          <div class="rep-step-sub">Selecione as seções a incluir e ajuste os limites dos gráficos.</div>
+
+          <div class="fld" style="margin-bottom: 20px;">
+  <label style="font-size:.65rem;color:var(--gray-500)">Idioma do Relatório / Report Language</label>
+  <div class="seg-ctrl" id="repLang">
+    <button class="seg-btn active" data-lang="pt" onclick="selectSeg(this)">🇧🇷 Português</button>
+    <button class="seg-btn" data-lang="en" onclick="selectSeg(this)">🇺🇸 English</button>
+  </div>
+</div>
+          
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+            <div style="padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--gray-50)">
+              <div style="font-family:var(--mono);font-size:.75rem;letter-spacing:1px;color:#8c8278;text-transform:uppercase;margin-bottom:12px;font-weight:700">Seções Principais</div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeCover" checked class="rep-content-check" style="accent-color:var(--red)"><span>Capa / Rosto</span></label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeInstructions" checked class="rep-content-check" style="accent-color:var(--red)"><span>Como Ler Este Relatório</span></label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeSummary" checked class="rep-content-check" style="accent-color:var(--red)"><span>Tabela Comparativa Geral</span></label>
+              </div>
+            </div>
+
+            <div style="padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--gray-50)">
+              <div style="font-family:var(--mono);font-size:.75rem;letter-spacing:1px;color:#8c8278;text-transform:uppercase;margin-bottom:12px;font-weight:700">Análise de Sensores</div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeSensors" checked class="rep-content-check" style="accent-color:var(--red)"><span>Páginas Individuais de Sensores</span></label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeCharts" checked class="rep-content-check" style="accent-color:var(--red)"><span>Gráficos de Série Temporal</span></label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeOccurrences" checked class="rep-content-check" style="accent-color:var(--red)"><span>Ocorrências e Notas</span></label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeMonthly" checked class="rep-content-check" style="accent-color:var(--red)"><span>Tabela de Evolução Mensal</span></label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeDeviations" checked class="rep-content-check" style="accent-color:var(--red)"><span>Análise de Desvios (T e UR)</span></label>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:16px;padding:16px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--white);box-shadow:var(--shadow-sm)">
+            <div style="font-family:var(--mono);font-size:.75rem;letter-spacing:1px;color:#8c8278;text-transform:uppercase;margin-bottom:12px;font-weight:700">
+              Limites do Gráfico e Anotações Extras
+            </div>
+            
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--gray-100)">
+              <div class="fld">
+                <label style="font-size:.65rem;color:var(--gray-500)">Fixar Eixo Y — Temperatura (°C)</label>
+                <div style="display:flex;gap:10px;align-items:center">
+                  <input type="number" id="repChartYMinT" placeholder="Mín (Auto)" style="flex:1">
+                  <span style="color:var(--gray-300)">até</span>
+                  <input type="number" id="repChartYMaxT" placeholder="Máx (Auto)" style="flex:1">
+                </div>
+              </div>
+              <div class="fld">
+                <label style="font-size:.65rem;color:var(--gray-500)">Fixar Eixo Y — Umidade Relativa (%)</label>
+                <div style="display:flex;gap:10px;align-items:center">
+                  <input type="number" id="repChartYMinR" placeholder="Mín (Auto)" style="flex:1">
+                  <span style="color:var(--gray-300)">até</span>
+                  <input type="number" id="repChartYMaxR" placeholder="Máx (Auto)" style="flex:1">
+                </div>
+              </div>
+            </div>
+
+            <div class="fld" style="margin-bottom:0">
+              <label style="font-size:.65rem;color:var(--gray-500)">Adicionar Anotações Verticais no Gráfico (Ex: "Abertura de porta")</label>
+              <div id="repCustomMarkersWrap" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;margin-top:6px"></div>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="addCustomMarkerRow()">+ Adicionar Anotação Temporal</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    
+
+      <!-- PASSO 5: Mapeamento e Justificativa de Desvios -->
+      <div class="rep-step" id="repMappingStep">
+        <div class="rep-step-num">5</div>
+        <div class="rep-step-body">
+          <div class="rep-step-title">Mapear e Justificar Desvios</div>
+          <div class="rep-step-sub">Revise todos os desvios detectados e adicione justificativas antes de gerar o relatório final.</div>
+          
+          <div style="margin-top:16px">
+            <button class="btn btn-ghost btn-sm" onclick="loadDesviosPreview()" style="margin-bottom:12px">
+              🔄 Carregar Desvios
+            </button>
+          </div>
+          
+          <div id="desviosLoading" style="display:none;font-size:.8rem;color:var(--gray-300)">
+            ⏳ Carregando desvios...
+          </div>
+          
+          <div id="desviosEmpty" style="font-size:.8rem;color:var(--gray-300);padding:16px;text-align:center;background:var(--red-muted);border-radius:var(--radius-md);display:none">
+            ✓ Nenhum desvio detectado para o período e padrão selecionados.
+          </div>
+          
+          <!-- TOP 10 DESVIOS CARD -->
+          <div id="desviosTopCard" class="top-desvios-card" style="display:none">
+            <div class="card-title">📊 Análise Rápida — Top 10 Maiores Desvios</div>
+            
+            <div class="desvios-summary">
+              <div class="desvios-stat">
+                <div style="font-family:var(--mono);font-size:3rem;line-height:1">📋</div>
+                <div>
+                  <div class="desvios-stat-num" id="desvios-total">0</div>
+                  <div class="desvios-stat-label">Desvios Totais</div>
+                </div>
+              </div>
+              <div class="desvios-stat crit">
+                <div style="font-family:var(--mono);font-size:3rem;line-height:1">🔴</div>
+                <div>
+                  <div class="desvios-stat-num" id="desvios-criticos">0</div>
+                  <div class="desvios-stat-label">Críticos (15+ pts)</div>
+                </div>
+              </div>
+              <div class="desvios-stat warn">
+                <div style="font-family:var(--mono);font-size:3rem;line-height:1">🟡</div>
+                <div>
+                  <div class="desvios-stat-num" id="desvios-atencao">0</div>
+                  <div class="desvios-stat-label">Atenção (8-14 pts)</div>
+                </div>
+              </div>
+              <div class="desvios-stat light">
+                <div style="font-family:var(--mono);font-size:3rem;line-height:1">🟢</div>
+                <div>
+                  <div class="desvios-stat-num" id="desvios-leves">0</div>
+                  <div class="desvios-stat-label">Leves (&lt;8 pts)</div>
+                </div>
+              </div>
+            </div>
+            
+            <table class="top-desvios-table">
+              <thead>
+                <tr>
+                  <th style="width:30px">#</th>
+                  <th>Sensor</th>
+                  <th>Data/Hora</th>
+                  <th>Tipo</th>
+                  <th>Magnitude</th>
+                  <th style="width:50px">Status</th>
+                </tr>
+              </thead>
+              <tbody id="topDesviosTbody"></tbody>
+            </table>
+            
+            <div class="desvios-show-all">
+              <a href="#" onclick="toggleAllDesviosTable(); return false;">Ver todos os desvios (completo)</a>
+            </div>
+          </div>
+          
+          <div class="tbl-wrap" id="desviosTableWrap" style="margin-top:12px;display:none;max-height:400px;overflow-y:auto">
+            <table class="desvios-table">
+              <thead>
+                <tr>
+                  <th>Sensor</th>
+                  <th>Data Hora</th>
+                  <th>T (°C)</th>
+                  <th>UR (%)</th>
+                  <th>Tipo de Desvio</th>
+                  <th>Justificativa / Observação</th>
+                </tr>
+              </thead>
+              <tbody id="desviosTbody"></tbody>
+            </table>
+          </div>
+          
+          <div style="font-size:.75rem;color:var(--gray-400);margin-top:8px;font-style:italic">
+            💡 Dica: Clique no campo de justificativa para editar. As observações serão incluídas no relatório final.
+          </div>
+        </div>
+      </div>
+
+      <!-- Gerar -->
+      <div style="display:flex;align-items:center;gap:16px;margin-top:28px;padding-top:20px;border-top:1px solid var(--border)">
+        <button class="btn btn-primary" id="btnGerar" onclick="generateReport()" style="padding:11px 32px;font-size:.76rem">
+          ⇒ GERAR RELATÓRIO
+        </button>
+        <span class="filter-info">O relatório abrirá em nova aba — salve como PDF com Ctrl+P / Cmd+P.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: GERENCIAR ──────────────────────────────────── -->
+  <div class="tab-pane" id="tab-gerenciar">
+    <div class="gtabs-nav">
+      <button class="gtab-btn active" onclick="switchGTab('sensores',this)">Sensores</button>
+      <button class="gtab-btn" onclick="switchGTab('exposicoes_ed',this)">Exposições</button>
+      <button class="gtab-btn" onclick="switchGTab('importacoes_ed',this)">Importações</button>
+    </div>
+
+    <!-- SENSORES -->
+    <div class="gtab-pane active" id="gtab-sensores">
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          <span class="card-title" style="margin:0">Sensores Cadastrados</span>
+          <button class="btn btn-primary btn-sm" onclick="openSensorModal()">＋ Novo Sensor</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Nome</th><th>Prédio</th><th>Andar</th>
+                <th>Status</th><th>Aliases</th><th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tSensoresAdmin"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXPOSIÇÕES -->
+    <div class="gtab-pane" id="gtab-exposicoes_ed">
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          <span class="card-title" style="margin:0">Exposições Cadastradas</span>
+          <button class="btn btn-primary btn-sm" onclick="openExpoModal()">＋ Nova Exposição</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Ano</th><th>Nome</th><th>Início Preparação</th>
+                <th>Abertura</th><th>Fechamento</th><th>Desmontagem</th>
+                <th>Espaços</th><th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tExposAdmin"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- IMPORTAÇÕES -->
+    <div class="gtab-pane" id="gtab-importacoes_ed">
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          <span class="card-title" style="margin:0">Histórico de Importações</span>
+          <button class="btn btn-ghost btn-sm" onclick="recalcularPeriodoExpositivo()"
+            title="Recalcula o campo período expositivo de todas as medições cruzando com as exposições cadastradas">
+            ↺ Recalcular Período Expositivo
+          </button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Arquivo</th><th>Data Importação</th>
+                <th>Total</th><th>Importadas</th><th>Duplicadas</th>
+                <th>Período</th><th>Status</th><th>Obs.</th>
+              </tr>
+            </thead>
+            <tbody id="tImportAdmin"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+
+</div><!-- /shell -->
+
+<!-- FOOTER -->
+<footer class="site-footer">
+  <span>MASP — Museu de Arte de São Paulo · Sistema de Monitoramento de Climatização · v3.0</span>
+  <button onclick="location.reload()">↺ Recarregar</button>
+</footer>
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay" id="loader">
+  <div class="spinner-box">
+    <div class="spinner"></div>
+    <p>Processando dados...</p>
+  </div>
+</div>
+
+<!-- HEATMAP TOOLTIP -->
+<div class="hm-tt" id="hmTt"></div>
+
+<!-- MODAL: SENSOR ──────────────────────────────────── -->
+<div class="modal-overlay hidden" id="sensorModal">
+  <div class="modal-box" style="width:min(520px,92vw)">
+    <div class="modal-title" id="sensorModalTitle">Novo Sensor</div>
+    <p class="modal-sub">Preencha os dados do ponto de medição.</p>
+    <input type="hidden" id="sensorId">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="fld" style="grid-column:1/-1">
+        <label>Nome do Ponto *</label>
+        <input type="text" id="sNome" placeholder="Ex: 1 andar - Frente">
+      </div>
+      <div class="fld" style="grid-column:1/-1">
+        <label>Localização</label>
+        <input type="text" id="sLocalizacao" placeholder="Ex: Galeria Principal - Frente">
+      </div>
+      <div class="fld">
+        <label>Andar</label>
+        <input type="text" id="sAndar" placeholder="Ex: 1º Andar">
+      </div>
+      <div class="fld">
+        <label>Prédio</label>
+        <select id="sPredi">
+          <option value="Lina">Lina</option>
+          <option value="Pietro">Pietro</option>
+        </select>
+      </div>
+      <div class="fld">
+        <label>Data de Instalação</label>
+        <input type="date" id="sInstalacao">
+      </div>
+      <div class="fld" style="grid-column:1/-1">
+        <label>Descrição</label>
+        <input type="text" id="sDescricao" placeholder="Observações adicionais">
+      </div>
+      <div class="fld">
+        <label>Status</label>
+        <select id="sAtivo">
+          <option value="1">Ativo</option>
+          <option value="0">Inativo</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeSensorModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveSensor()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ALIASES ──────────────────────────────────── -->
+<div class="modal-overlay hidden" id="aliasModal">
+  <div class="modal-box" style="width:min(480px,92vw)">
+    <div class="modal-title">Aliases do Sensor</div>
+    <p class="modal-sub" id="aliasModalSub">Nomes alternativos reconhecidos no upload.</p>
+
+    <!-- lista atual -->
+    <div id="aliasCurrentList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;min-height:32px"></div>
+
+    <!-- adicionar novo -->
+    <div style="display:flex;gap:8px;align-items:center">
+      <input type="text" id="aliasNewInput" placeholder="Digite o novo alias..."
+             style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--black);font-size:.84rem"
+             onkeydown="if(event.key==='Enter') addAlias()">
+      <button class="btn btn-primary btn-sm" onclick="addAlias()">Adicionar</button>
+    </div>
+
+    <div class="modal-actions" style="margin-top:18px">
+      <button class="btn btn-ghost" onclick="closeAliasModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EXPOSIÇÃO ────────────────────────────────── -->
+<div class="modal-overlay hidden" id="expoModal">
+  <div class="modal-box" style="width:min(640px,92vw)">
+    <div class="modal-title" id="expoModalTitle">Nova Exposição</div>
+    <p class="modal-sub">Preencha os dados da exposição.</p>
+    <input type="hidden" id="expoId">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="fld" style="grid-column:1/-1">
+        <label>Nome da Exposição *</label>
+        <input type="text" id="eNome" placeholder="Ex: Histórias Afro-Atlânticas">
+      </div>
+      <div class="fld">
+        <label>Ano *</label>
+        <input type="number" id="eAno" min="2000" max="2099" placeholder="2025">
+      </div>
+      <div class="fld">
+        <label>Espaços</label>
+        <input type="text" id="eEspacos" placeholder="Ex: 1 andar, 2SS">
+      </div>
+      <div class="fld">
+        <label>Início Preparação</label>
+        <input type="date" id="eIniPrep">
+      </div>
+      <div class="fld">
+        <label>Abertura (público) *</label>
+        <input type="date" id="eInicio">
+      </div>
+      <div class="fld">
+        <label>Fechamento (público) *</label>
+        <input type="date" id="eTermino">
+      </div>
+      <div class="fld">
+        <label>Fim Desmontagem</label>
+        <input type="date" id="eDesmontagem">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeExpoModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveExpo()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CONFIRMAR EXCLUSÃO ──────────────────────── -->
+<div class="modal-overlay hidden" id="deleteModal">
+  <div class="modal-box" style="width:min(420px,92vw)">
+    <div class="modal-title" style="color:var(--red)">⚠ Confirmar Exclusão</div>
+    <p class="modal-sub" id="deleteModalMsg" style="margin-top:12px;font-size:.9rem;color:var(--black)"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeDeleteModal()">Cancelar</button>
+      <button class="btn btn-primary" id="deleteConfirmBtn" style="background:#dc2626">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: MAPEAMENTO CSV ──────────────────────────── -->
+<div class="modal-overlay hidden" id="csvModal">
+  <div class="modal-box">
+    <div class="modal-title">Mapear Colunas do CSV</div>
+    <p class="modal-sub">Identifique quais colunas correspondem a cada campo. A prévia mostra as primeiras linhas do arquivo.</p>
+    <div class="csv-preview" id="csvPreview"></div>
+
+    <div class="fld" style="margin-bottom:14px">
+      <label>Separador Detectado</label>
+      <select id="csvDelim" onchange="reloadCSVHeaders()">
+        <option value=";">Ponto e vírgula ( ; )</option>
+        <option value=",">Vírgula ( , )</option>
+        <option value="&#9;">Tab</option>
+      </select>
+    </div>
+
+    <div class="modal-grid">
+      <div class="fld">
+        <label>Coluna Data / Hora *</label>
+        <select id="csvColDate"></select>
+      </div>
+      <div class="fld">
+        <label>Coluna Temperatura *</label>
+        <select id="csvColTemp"></select>
+      </div>
+      <div class="fld">
+        <label>Coluna Umidade *</label>
+        <select id="csvColHum"></select>
+      </div>
+      <div class="fld">
+        <label>Coluna Ponto (opcional)</label>
+        <select id="csvColPonto"></select>
+      </div>
+    </div>
+
+    <div class="fld" style="margin-top:14px">
+      <label>Nome do Ponto (sobrescreve coluna acima)</label>
+      <input type="text" id="csvSensorName" placeholder="Ex: Reserva Técnica 01">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeCSVModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="processCSV()">Importar Dados</button>
+    </div>
+  </div>
+</div>
+
+<!-- REPORT OVERLAY removido — relatório gerado em nova janela via window.open -->
+
+<script>
+// ── BASE FUNCTIONS (sem dependências de API) ──────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  history.replaceState(null, '', '#' + name);
+
+  // Carrega dados da aba se ainda não foram carregados
+  if (typeof loadTab === 'function') {
+    loadTab(name, window._lastFilters || {}).catch(e => console.warn('loadTab:', e));
+  }
+}
+
+function toggleInfoPopover(id) {
+  const wrap = document.getElementById(id);
+  const isOpen = wrap.classList.contains('open');
+  // Fecha todos os outros popovers abertos
+  document.querySelectorAll('.info-icon-wrap.open').forEach(el => el.classList.remove('open'));
+  if (!isOpen) {
+    wrap.classList.add('open');
+    // Detecta se o popover está vazando pela borda esquerda da janela
+    const popover = wrap.querySelector('.info-popover');
+    if (popover) {
+      popover.style.right  = '';
+      popover.style.left   = '';
+      const rect = popover.getBoundingClientRect();
+      if (rect.left < 8) {
+        popover.style.right = 'auto';
+        popover.style.left  = '0';
+      }
+    }
+  }
+}
+
+// Fecha popovers ao clicar fora
+document.addEventListener('click', e => {
+  if (!e.target.closest('.info-icon-wrap')) {
+    document.querySelectorAll('.info-icon-wrap.open').forEach(el => el.classList.remove('open'));
+  }
+});
+
+function toggleAlerts() {
+  const wrap = document.getElementById('alertListWrap');
+  const chev = document.getElementById('alertChev');
+  wrap.classList.toggle('collapsed');
+  chev.classList.toggle('collapsed');
+  chev.textContent = wrap.classList.contains('collapsed') ? '▶' : '▼';
+}
+
+function badgeFor(v) {
+  if (v == null) return '<span class="badge badge-gray">–</span>';
+  if (v >= 85) return `<span class="badge badge-green">${v}%</span>`;
+  if (v >= 70) return `<span class="badge badge-amber">${v}%</span>`;
+  return `<span class="badge badge-red">${v}%</span>`;
+}
+
+function clearFilters() {
+  // Restaura o estado padrão do boot: todos os pontos selecionados,
+  // período expositivo = Todos, intervalo = últimos 30 dias a partir da última medição.
+  if (window.selectAllPontos) selectAllPontos(true);
+  document.querySelectorAll('#fPeriodo .seg-btn').forEach(b => b.classList.remove('active'));
+  const allBtn = document.querySelector('#fPeriodo .seg-btn[data-val=""]');
+  if (allBtn) allBtn.classList.add('active');
+  // Usa a data mais recente do banco (salva no boot) ou hoje como fallback
+  const ref   = window._ultimaMedicao ? new Date(window._ultimaMedicao + 'T12:00:00') : new Date();
+  const ini30 = new Date(ref); ini30.setDate(ref.getDate() - 30);
+  document.getElementById('fDataIni').value = ini30.toISOString().slice(0, 10);
+  document.getElementById('fDataFim').value = ref.toISOString().slice(0, 10);
+  document.getElementById('filterInfo').textContent = 'Exibindo dados dos últimos 30 dias';
+}
+
+function showTt(e, date, cnt) {
+  const tt = document.getElementById('hmTt');
+  tt.textContent = `${date}: ${cnt} alerta${cnt !== 1 ? 's' : ''}`;
+  tt.style.display = 'block';
+  tt.style.left = (e.clientX + 12) + 'px';
+  tt.style.top = (e.clientY - 28) + 'px';
+}
+function hideTt() { document.getElementById('hmTt').style.display = 'none'; }
+
+// Drag & drop
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('drag');
+  const files = [...e.dataTransfer.files].filter(f => /\.(json|csv)$/i.test(f.name));
+  if (files.length && window.handleFilesAPI) handleFilesAPI(files);
+});
+
+// Restaura aba ativa a partir do hash da URL (ex: #analise, #gerenciar)
+(function() {
+  const hash = location.hash.slice(1);
+  if (hash) {
+    const pane = document.getElementById('tab-' + hash);
+    const btn  = document.querySelector(`.tab-btn[onclick*="'${hash}'"]`);
+    if (pane && btn) {
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      pane.classList.add('active');
+      btn.classList.add('active');
+    }
+  }
+})();
+
+// ── STATUS DOT — sincroniza com o infoBanner (modificado pelo api.js) ──
+(function() {
+  const banner = document.getElementById('infoBanner');
+  const dot    = document.getElementById('statusDot');
+  const lbl    = document.getElementById('statusLabel');
+  if (!banner || !dot || !lbl) return;
+
+  function syncDot() {
+    const status = banner.dataset.status || '';
+    if (status === 'ok') {
+      dot.className = 'status-dot ok';
+      lbl.textContent = 'BANCO CONECTADO';
+    } else if (status === 'warn') {
+      dot.className = 'status-dot warn';
+      lbl.textContent = 'AVISO';
+    } else if (status === 'err') {
+      dot.className = 'status-dot err';
+      lbl.textContent = 'ERRO DE CONEXÃO';
+    } else {
+      dot.className = 'status-dot';
+      lbl.textContent = 'CONECTANDO...';
+    }
+  }
+
+  const obs = new MutationObserver(syncDot);
+  obs.observe(banner, { attributes: true, attributeFilter: ['data-status'] });
+})();
+</script>
+
+<script src="/static/api.js"></script>
+
+<!-- MODAL: REVISÃO DE SENSORES NOVOS ──────────────────── -->
+<div class="modal-overlay hidden" id="reviewModal">
+  <div class="modal-box" style="width:min(680px,95vw);max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-title">🔍 Sensores não reconhecidos</div>
+    <p class="modal-sub" style="margin-bottom:12px">
+      O upload criou sensores novos que não existiam no banco.<br>
+      Para cada um, confirme se é realmente novo ou vincule a um sensor já existente.
+    </p>
+
+    <!-- lista de itens de revisão — preenchida via JS -->
+    <div id="reviewList" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px;padding-right:4px"></div>
+
+    <div class="modal-actions" style="margin-top:18px">
+      <button class="btn btn-ghost" onclick="closeReviewModal()">Pular</button>
+      <button class="btn btn-primary" id="reviewSubmitBtn" onclick="submitReview()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NÃO-CONFORMIDADES PÓS-IMPORTAÇÃO ───────────── -->
+<div class="modal-overlay hidden" id="ncModal">
+  <div class="modal-box" style="width:min(780px,96vw);max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-title" style="color:var(--amber)">⚠ Não-Conformidades Detectadas</div>
+    <p class="modal-sub" style="margin-bottom:16px">
+      Os sensores abaixo apresentaram leituras fora dos parâmetros no período importado.<br>
+      Marque os que deseja registrar como ocorrência e preencha a justificativa.
+    </p>
+
+    <div id="ncList" style="overflow-y:auto;flex:1;padding-right:4px"></div>
+
+    <div class="modal-actions" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+      <button class="btn btn-ghost" onclick="closeNaoConformidadesModal()">Ignorar</button>
+      <button class="btn btn-primary" id="ncSalvarBtn" onclick="salvarOcorrenciasNaoConformidade()">
+        Salvar Ocorrências
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: OCORRÊNCIA ──────────────────────────── -->
+<div class="modal-overlay hidden" id="ocorrenciaModal">
+  <div class="modal-box" style="width:min(680px,95vw)">
+    <div class="modal-title" id="ocorrenciaModalTitle">Nova Ocorrência</div>
+    <p class="modal-sub">Registre o contexto de dados fora do padrão ou eventos relevantes.</p>
+    <input type="hidden" id="ocorrenciaId">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="fld"><label>Início *</label><input type="datetime-local" id="oDataInicio"></div>
+      <div class="fld"><label>Fim</label><input type="datetime-local" id="oDataFim"></div>
+      <div class="fld">
+        <label>Prédio *</label>
+        <select id="oPredi" onchange="updateOcorrenciaSensores()">
+          <option value="Lina">Lina</option>
+          <option value="Pietro">Pietro</option>
+          <option value="Ambos">Ambos</option>
+        </select>
+      </div>
+      <div class="fld">
+        <label>Tipo *</label>
+        <select id="oTipo">
+          <option value="manutencao">Manutenção / Troca de pilha / Calibração</option>
+          <option value="falha_equipamento">Falha de equipamento</option>
+          <option value="obra">Obra ou intervenção no espaço</option>
+          <option value="sensor_deslocado">Sensor deslocado ou fora do lugar</option>
+        </select>
+      </div>
+      <div class="fld">
+        <label>Fonte *</label>
+        <select id="oFonte">
+          <option value="verbal">Verbal</option>
+          <option value="sistema">Notificação do sistema</option>
+          <option value="grupo_climatizacao">Grupo de climatização</option>
+          <option value="email">E-mail</option>
+        </select>
+      </div>
+      <div class="fld"><label>Responsável</label><input type="text" id="oResponsavel" placeholder="Nome de quem registrou"></div>
+      <div class="fld" style="grid-column:1/-1">
+        <label>Descrição *</label>
+        <textarea id="oDescricao" rows="3"
+          style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--sans);font-size:.85rem;resize:vertical"
+          placeholder="Descreva o que aconteceu..."></textarea>
+      </div>
+      <div class="fld" style="grid-column:1/-1">
+        <label>Justificativa para Desvios <small style="color:var(--gray-400);font-weight:400">(opcional)</small></label>
+        <textarea id="oJustificativa" rows="2"
+          style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--sans);font-size:.85rem;resize:vertical"
+          placeholder="Se uma ocorrência explica um desvio de conformidade, descreva aqui como. Ex: 'Janela aberta durante manutenção' ou 'Falha no sistema de umidificação'"></textarea>
+      </div>
+      <div class="fld" style="grid-column:1/-1">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="oAfetaTodo" onchange="toggleSensoresOcorrencia()" style="width:auto;accent-color:var(--red)">
+          Afeta todos os sensores do prédio selecionado
+        </label>
+      </div>
+      <div class="fld" style="grid-column:1/-1" id="oSensoresWrap">
+        <label>Sensores Afetados</label>
+        <div id="oSensoresChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;padding:10px;border:1px solid var(--border);border-radius:var(--radius);min-height:42px;background:var(--white)">
+          <span style="font-family:var(--mono);font-size:.72rem;color:var(--gray-300)">Selecione o prédio primeiro...</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeOcorrenciaModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveOcorrencia()">Salvar</button>
+    </div>
+  </div>
+</div>
+<!-- MODAL: PICOS DETECTADOS ────────────────────────────── -->
+<div class="modal-overlay hidden" id="picosModal">
+  <div class="modal-box" style="width:min(780px,96vw);max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-title">⚠ Picos Detectados no Upload</div>
+    <p class="modal-sub" style="margin-bottom:12px">
+      Foram identificados <strong id="picosCount">0</strong> evento(s) fora do padrão nos dados importados.
+      Selecione os que deseja registrar como ocorrências e confirme.
+    </p>
+
+    <!-- Legenda -->
+    <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+      <span style="font-family:var(--mono);font-size:.68rem;color:var(--gray-400)">
+        <span style="color:#d97706;font-weight:700">■</span> Variação brusca de UR
+      </span>
+      <span style="font-family:var(--mono);font-size:.68rem;color:var(--gray-400)">
+        <span style="color:#E30613;font-weight:700">■</span> Temperatura fora da faixa
+      </span>
+    </div>
+
+    <!-- Lista de picos -->
+    <div id="picosLista" style="flex:1;overflow-y:auto;border:1px solid var(--border);
+         border-radius:var(--radius);padding:4px"></div>
+
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-ghost" onclick="closePicosModal()">Ignorar todos</button>
+      <button class="btn btn-ghost" onclick="toggleTodosPicos(true)"
+        style="font-size:.78rem">☑ Selecionar todos</button>
+      <button class="btn btn-ghost" onclick="toggleTodosPicos(false)"
+        style="font-size:.78rem">☐ Desmarcar todos</button>
+      <button class="btn btn-primary" onclick="salvarPicosSelecionados()">
+        Salvar ocorrências selecionadas
+      </button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
+
