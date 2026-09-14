@@ -87,10 +87,19 @@ function classificarSeveridade(magnitude) {
 async function vincularDesviosComOcorrencias(desvios, dataIni, dataFim) {
   try {
     const ocorrencias = await API.get('ocorrencias', { data_ini: dataIni, data_fim: dataFim });
+    // Prédio de cada sensor — sem isso, uma ocorrência com afeta_predio_todo=1 de um
+    // prédio vazaria como justificativa de desvio para sensores do outro prédio.
+    let predioPorSensor = {};
+    try {
+      const meta = await API.get('meta');
+      predioPorSensor = Object.fromEntries((meta.pontos || []).map(p => [p.nome, p.predio]));
+    } catch (_) {}
     desvios.forEach(d => {
       d.ocorrencia_vinculada = null;
       d.justificativa_auto = null;
+      const sensorPredio = predioPorSensor[d.sensor] || 'Lina';
       for (const o of ocorrencias) {
+        if (o.predio !== sensorPredio && o.predio !== 'Ambos') continue;
         const oIni = (o.data_inicio || '').substring(0, 16);
         const oFim = (o.data_fim || '').substring(0, 16);
         const dHora = (d.data_hora || '').substring(0, 16);
@@ -414,6 +423,16 @@ async function generateReport() {
     let ocorrencias = [];
     try { ocorrencias = await API.get('ocorrencias', { data_ini: dataIni, data_fim: dataFim }); } catch (_) {}
 
+    // Prédio de cada sensor selecionado — necessário porque uma ocorrência com
+    // afeta_predio_todo=1 só deve valer para sensores do MESMO prédio (ou de uma
+    // ocorrência registrada com predio='Ambos'). Sem isso, uma ocorrência do Lina
+    // marcada "afeta prédio todo" vazava para relatórios do Pietro, e vice-versa.
+    let predioPorSensor = {};
+    try {
+      const meta = await API.get('meta');
+      predioPorSensor = Object.fromEntries((meta.pontos || []).map(p => [p.nome, p.predio]));
+    } catch (_) {}
+
     let terreoDados = [];
     try {
       const res = await fetch(`/api/serie?ponto=Térreo&data_ini=${dataIni}&data_fim=${dataFim}&_=${cacheBuster}`);
@@ -430,8 +449,10 @@ async function generateReport() {
       if (serieRes.headers.get('X-Truncated') === 'true') anyTruncated = true;
       const serie = await serieRes.json();
       
+      const sensorPredio = predioPorSensor[sensor] || 'Lina';
       const sensorOcorrs = ocorrencias.filter(o =>
-        o.afeta_predio_todo || o.sensores?.some(s => s.nome === sensor)
+        (o.predio === sensorPredio || o.predio === 'Ambos') &&
+        (o.afeta_predio_todo || o.sensores?.some(s => s.nome === sensor))
       );
       allData.push({ sensor, serie, stats: pontosRes[0] || {}, thresh: getReportThresholds(sensor), ocorrencias: sensorOcorrs, mensalAPI: mensalRes });
     }

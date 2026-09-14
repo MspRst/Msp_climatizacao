@@ -5,8 +5,7 @@
 > (dívida técnica catalogada — dead code, duplicações, recomendações). Este arquivo é sobre
 > **como o código está organizado hoje e por que**.
 
-Última atualização: 2026-09-14 · Branch: `main` · Último commit: `6a2956e` (nada do que segue
-foi commitado ainda — ver §3)
+Última atualização: 2026-09-14 · Branch: `main` — ver §3 para o histórico de commits recente
 
 ---
 
@@ -59,23 +58,26 @@ Ver §6 para as armadilhas disso.
 
 ---
 
-## 3. Refatoração ainda não commitada
+## 3. Histórico de commits
 
-A árvore de trabalho segue com a refatoração grande de UI (index.html monolítico → template
-Jinja + módulos JS) **não commitada** — e por cima dela foram feitas todas as mudanças das
-últimas sessões (multi-prédio, relatório interno/externo, import XLSX, etc.). Ou seja: hoje
-`git diff` mostra tanto a refatoração estrutural quanto meses de features/correções misturadas.
-Antes de commitar, vale considerar quebrar isso em commits menores e coerentes em vez de um
-único commit gigante — ou aceitar um commit grande mas revisar o diff com calma primeiro.
+Até 2026-09-14 a árvore de trabalho acumulava meses de mudanças não commitadas (a refatoração
+de UI + multi-prédio + relatório interno/externo + import XLSX, tudo misturado num único
+`git diff`). Foi finalmente commitado em 3 partes, do mais antigo/genérico para o mais
+recente/específico:
 
-```
- M app.py               (+632/-diversos — ver ANALISE-TECNICA para o que mudou)
- M requirements.txt     (+openpyxl)
- M static/api.js
-RM static/index.html → templates/index.html
-?? static/admin.js, static/charts.js, static/ui.js, static/css/
-?? templates/modals.html
-```
+1. **`refactor: divide UI monolítica em templates Jinja + módulos JS; ...`** — o bloco grande
+   histórico: index.html monolítico → `templates/index.html` + `templates/modals.html` +
+   `static/{api,ui,charts,admin}.js` + `static/css/style.css`; suporte a Lina/Pietro; import
+   de XLSX; relatório interno/externo. Não foi possível separar esse bloco em commits menores
+   por tema (refatoração vs. multi-prédio vs. relatório) porque os arquivos novos (`admin.js`,
+   `charts.js`, `ui.js`) nunca tinham sido commitados antes — não existe histórico para
+   recortar diffs parciais entre esses temas.
+2. **`fix: guess de sensor no upload XLSX passa a considerar aliases; ...`** — itens 5–7 da
+   pendência (ver §9), primeira tarefa da sessão de 2026-09-14.
+3. **`fix: ocorrências vazavam entre prédios no relatório; adiciona exposições/ocorrências do
+   Pietro`** — segunda tarefa da mesma sessão, ver §9 "Resolvido em 2026-09-14".
+
+Dali em diante, o hábito passa a ser: **commitar ao final de cada tarefa**, não deixar acumular.
 
 ---
 
@@ -284,8 +286,43 @@ página de tendência em branco, cards melhor/pior desempenho — tudo isso est�
   da lista de nomes.
 - **Backups soltos apagados** — `climatizacao_museu.backup-*.db` removidos da raiz.
 - **`.gitignore` cobre dados operacionais reais** — `exemplos_relatorios/`,
-  `exemplo_graficos_pietro/`, `teste_relatorios_gerados/` adicionados (continham nomes,
-  ocorrências e planilha de sensor reais).
+  `exemplo_graficos_pietro/`, `teste_relatorios_gerados/`, `ocorrencias/` adicionados
+  (continham nomes, ocorrências e planilha de sensor reais).
+- **Bug real corrigido: ocorrências vazavam entre prédios no relatório e na análise de
+  desvios.** `generateReport()` e `vincularDesviosComOcorrencias()` (`admin.js`) filtravam
+  ocorrência↔sensor só por `afeta_predio_todo` OU sensor vinculado, **sem checar o prédio da
+  ocorrência** — uma ocorrência do Lina com `afeta_predio_todo=1` aparecia também num
+  relatório/análise só do Pietro (e vice-versa; 54 ocorrências do Lina estavam nessa
+  condição). Corrigido buscando `/api/meta` para montar um mapa nome→predio e só considerar
+  a ocorrência quando `o.predio` bate com o predio do sensor (ou é `'Ambos'`).
+- **Dados do Pietro para o relatório de 2026** (pedido da Yasmin, planilha
+  `ocorrencias/CLIMATIZACAO_Registro de eventos.xlsx` aba "2026" + CSV de exposições):
+  - 5 exposições inseridas (`exposicoes`, ids 216–220), todas `predio='Pietro'`: *La Chola
+    Poblete* (2º Andar, 06/03–02/08), *Claudia Alarcón & Silät* (3º Andar, 06/03–02/08),
+    *Santiago Yahuarcani* (5º e 6º Andar, 02/04–02/08 — `espacos` escrito como "5º Andar, 6º
+    Andar" para bater com as duas keywords separadamente), *Colectivo Acciones de Arte* (4º
+    Andar, 07/04–02/08), *Histórias latino-americanas* (todos os 5 andares, 04/09–31/01/27 —
+    `espacos` lista os 5 andares por extenso, já que "todos os andares" não bate com nenhuma
+    keyword). "Histórias da ecologia" (2025-09-04–2026-02-01, Pietro) **não** foi inserida:
+    termina antes do início dos dados dos sensores do Pietro (fev/2026), sem sobreposição.
+  - 14 ocorrências inseridas (`ocorrencias`, ids 222–235) a partir das linhas ainda não
+    importadas da planilha (a coluna "Registrado no Dash" está desatualizada — 3 linhas
+    já estavam no banco apesar de marcadas `FALSE`; comparei por data+descrição, não pela
+    coluna). Mapeamento tipo-livre→enum e fonte→enum seguiu o padrão já usado nas ~217
+    ocorrências existentes (ex.: "Queda de energia"→`falha_equipamento`, "Outro"/
+    "Manutenção..."→`manutencao`, "Montagem/Desmontagem"→`obra`, "Troca de
+    datalogger"/deslocamento físico→`sensor_deslocado`). Eventos que afetaram os dois
+    prédios (ex.: pico de energia de 24/03) foram gravados com `predio='Ambos'` (suportado
+    nativamente pelo filtro de `/api/ocorrencias`) em vez de duas linhas duplicadas.
+    Duas datas exigiram interpretação (confirmadas com a Yasmin): "04/08/0206" → 2026-08-04
+    (typo no ano) e "08-09/02/2026" 00:00–12:00 → início 08/02 00:00, fim 09/02 12:00. Fonte
+    "Conservação/restauro" (3 ocorrências, não existe no dropdown atual) foi gravada como
+    `verbal`. Nome "Yasmin Bitenocuirt" (typo na planilha) normalizado para "Yasmin
+    Bitencourt", como aparece no resto do banco.
+  - Depois da inserção, rodei `/api/admin/recalcular_periodo` (confirmei no servidor de dev
+    já em execução da Yasmin, na porta 5000, para invalidar o cache dele também) — as 5
+    exposições nova cruzaram corretamente com as medições existentes de cada andar do
+    Pietro (conferido por amostragem em `medicoes.periodo_expositivo_nome`).
 
 ---
 
