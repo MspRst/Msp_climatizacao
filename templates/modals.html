@@ -1,0 +1,348 @@
+<!-- MODAL: SENSOR ──────────────────────────────────── -->
+<div class="modal-overlay hidden" id="sensorModal">
+  <div class="modal-box" style="width:min(520px,92vw)">
+    <div class="modal-title" id="sensorModalTitle">Novo Sensor</div>
+    <p class="modal-sub">Preencha os dados do ponto de medição.</p>
+    <input type="hidden" id="sensorId">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="fld" style="grid-column:1/-1">
+        <label>Nome do Ponto *</label>
+        <input type="text" id="sNome" placeholder="Ex: 1 andar - Frente">
+      </div>
+      <div class="fld" style="grid-column:1/-1">
+        <label>Localização</label>
+        <input type="text" id="sLocalizacao" placeholder="Ex: Galeria Principal - Frente">
+      </div>
+      <div class="fld">
+        <label>Andar</label>
+        <input type="text" id="sAndar" placeholder="Ex: 1º Andar">
+      </div>
+      <div class="fld">
+        <label>Prédio</label>
+        <select id="sPredi">
+          <option value="Lina">Lina</option>
+          <option value="Pietro">Pietro</option>
+        </select>
+      </div>
+      <div class="fld">
+        <label>Data de Instalação</label>
+        <input type="date" id="sInstalacao">
+      </div>
+      <div class="fld" style="grid-column:1/-1">
+        <label>Descrição</label>
+        <input type="text" id="sDescricao" placeholder="Observações adicionais">
+      </div>
+      <div class="fld">
+        <label>Status</label>
+        <select id="sAtivo">
+          <option value="1">Ativo</option>
+          <option value="0">Inativo</option>
+        </select>
+      </div>
+      <div class="fld">
+        <label>Espaço Expositivo?</label>
+        <select id="sEspacoExpositivo">
+          <option value="1">Sim — entra no cruzamento com exposições</option>
+          <option value="0">Não — Reserva Técnica, Ateliê, CP etc.</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeSensorModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveSensor()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ALIASES ──────────────────────────────────── -->
+<div class="modal-overlay hidden" id="aliasModal">
+  <div class="modal-box" style="width:min(480px,92vw)">
+    <div class="modal-title">Aliases do Sensor</div>
+    <p class="modal-sub" id="aliasModalSub">Nomes alternativos reconhecidos no upload.</p>
+
+    <!-- lista atual -->
+    <div id="aliasCurrentList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;min-height:32px"></div>
+
+    <!-- adicionar novo -->
+    <div style="display:flex;gap:8px;align-items:center">
+      <input type="text" id="aliasNewInput" placeholder="Digite o novo alias..."
+             style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--black);font-size:.84rem"
+             onkeydown="if(event.key==='Enter') addAlias()">
+      <button class="btn btn-primary btn-sm" onclick="addAlias()">Adicionar</button>
+    </div>
+
+    <div class="modal-actions" style="margin-top:18px">
+      <button class="btn btn-ghost" onclick="closeAliasModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EXPOSIÇÃO ────────────────────────────────── -->
+<div class="modal-overlay hidden" id="expoModal">
+  <div class="modal-box" style="width:min(640px,92vw)">
+    <div class="modal-title" id="expoModalTitle">Nova Exposição</div>
+    <p class="modal-sub">Preencha os dados da exposição.</p>
+    <input type="hidden" id="expoId">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="fld" style="grid-column:1/-1">
+        <label>Nome da Exposição *</label>
+        <input type="text" id="eNome" placeholder="Ex: Histórias Afro-Atlânticas">
+      </div>
+      <div class="fld">
+        <label>Ano *</label>
+        <input type="number" id="eAno" min="2000" max="2099" placeholder="2025">
+      </div>
+      <div class="fld">
+        <label>Prédio *</label>
+        <select id="ePredio">
+          <option value="Lina">Lina</option>
+          <option value="Pietro">Pietro</option>
+          <option value="Ambos">Ambos</option>
+        </select>
+      </div>
+      <div class="fld" style="grid-column:1/-1">
+        <label>Espaços</label>
+        <input type="text" id="eEspacos" placeholder="Ex: 1 andar, 2SS">
+      </div>
+      <div class="fld">
+        <label>Início Preparação</label>
+        <input type="date" id="eIniPrep">
+      </div>
+      <div class="fld">
+        <label>Abertura (público) *</label>
+        <input type="date" id="eInicio">
+      </div>
+      <div class="fld">
+        <label>Fechamento (público) *</label>
+        <input type="date" id="eTermino">
+      </div>
+      <div class="fld">
+        <label>Fim Desmontagem</label>
+        <input type="date" id="eDesmontagem">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeExpoModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveExpo()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CONFIRMAR EXCLUSÃO ──────────────────────── -->
+<div class="modal-overlay hidden" id="deleteModal">
+  <div class="modal-box" style="width:min(420px,92vw)">
+    <div class="modal-title" style="color:var(--red)">⚠ Confirmar Exclusão</div>
+    <p class="modal-sub" id="deleteModalMsg" style="margin-top:12px;font-size:.9rem;color:var(--black)"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeDeleteModal()">Cancelar</button>
+      <button class="btn btn-primary" id="deleteConfirmBtn" style="background:#dc2626">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: MAPEAMENTO CSV ──────────────────────────── -->
+<div class="modal-overlay hidden" id="csvModal">
+  <div class="modal-box">
+    <div class="modal-title">Mapear Colunas do CSV</div>
+    <p class="modal-sub">Identifique quais colunas correspondem a cada campo. A prévia mostra as primeiras linhas do arquivo.</p>
+    <div class="csv-preview" id="csvPreview"></div>
+
+    <div class="fld" style="margin-bottom:14px">
+      <label>Separador Detectado</label>
+      <select id="csvDelim" onchange="reloadCSVHeaders()">
+        <option value=";">Ponto e vírgula ( ; )</option>
+        <option value=",">Vírgula ( , )</option>
+        <option value="&#9;">Tab</option>
+      </select>
+    </div>
+
+    <div class="modal-grid">
+      <div class="fld">
+        <label>Coluna Data / Hora *</label>
+        <select id="csvColDate"></select>
+      </div>
+      <div class="fld">
+        <label>Coluna Temperatura *</label>
+        <select id="csvColTemp"></select>
+      </div>
+      <div class="fld">
+        <label>Coluna Umidade *</label>
+        <select id="csvColHum"></select>
+      </div>
+      <div class="fld">
+        <label>Coluna Ponto (opcional)</label>
+        <select id="csvColPonto"></select>
+      </div>
+    </div>
+
+    <div class="fld" style="margin-top:14px">
+      <label>Nome do Ponto (sobrescreve coluna acima)</label>
+      <input type="text" id="csvSensorName" placeholder="Ex: Reserva Técnica 01">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeCSVModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="processCSV()">Importar Dados</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: SENSOR DO ARQUIVO XLSX (dataloggers do Pietro) ── -->
+<div class="modal-overlay hidden" id="xlsxSensorModal">
+  <div class="modal-box" style="width:min(480px,92vw)">
+    <div class="modal-title">A quem pertencem estes dados?</div>
+    <p class="modal-sub" id="xlsxSensorSub">Este arquivo não traz o nome do sensor — selecione a qual ponto de medição ele pertence.</p>
+    <div class="fld" style="margin-top:14px">
+      <label>Sensor *</label>
+      <select id="xlsxSensorSelect">
+        <option value="">— selecione —</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="resolveXLSXSensorModal(null)">Pular este arquivo</button>
+      <button class="btn btn-primary" onclick="resolveXLSXSensorModal(document.getElementById('xlsxSensorSelect').value)">Confirmar e Importar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: REVISÃO DE SENSORES NOVOS ──────────────────── -->
+<div class="modal-overlay hidden" id="reviewModal">
+  <div class="modal-box" style="width:min(680px,95vw);max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-title">🔍 Sensores não reconhecidos</div>
+    <p class="modal-sub" style="margin-bottom:12px">
+      O upload criou sensores novos que não existiam no banco.<br>
+      Para cada um, confirme se é realmente novo ou vincule a um sensor já existente.
+    </p>
+
+    <!-- lista de itens de revisão — preenchida via JS -->
+    <div id="reviewList" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px;padding-right:4px"></div>
+
+    <div class="modal-actions" style="margin-top:18px">
+      <button class="btn btn-ghost" onclick="closeReviewModal()">Pular</button>
+      <button class="btn btn-primary" id="reviewSubmitBtn" onclick="submitReview()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NÃO-CONFORMIDADES PÓS-IMPORTAÇÃO ───────────── -->
+<div class="modal-overlay hidden" id="ncModal">
+  <div class="modal-box" style="width:min(780px,96vw);max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-title" style="color:var(--amber)">⚠ Não-Conformidades Detectadas</div>
+    <p class="modal-sub" style="margin-bottom:16px">
+      Os sensores abaixo apresentaram leituras fora dos parâmetros no período importado.<br>
+      Marque os que deseja registrar como ocorrência e preencha a justificativa.
+    </p>
+
+    <div id="ncList" style="overflow-y:auto;flex:1;padding-right:4px"></div>
+
+    <div class="modal-actions" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+      <button class="btn btn-ghost" onclick="closeNaoConformidadesModal()">Ignorar</button>
+      <button class="btn btn-primary" id="ncSalvarBtn" onclick="salvarOcorrenciasNaoConformidade()">
+        Salvar Ocorrências
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: OCORRÊNCIA ──────────────────────────── -->
+<div class="modal-overlay hidden" id="ocorrenciaModal">
+  <div class="modal-box" style="width:min(680px,95vw)">
+    <div class="modal-title" id="ocorrenciaModalTitle">Nova Ocorrência</div>
+    <p class="modal-sub">Registre o contexto de dados fora do padrão ou eventos relevantes.</p>
+    <input type="hidden" id="ocorrenciaId">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="fld"><label>Início *</label><input type="datetime-local" id="oDataInicio"></div>
+      <div class="fld"><label>Fim</label><input type="datetime-local" id="oDataFim"></div>
+      <div class="fld">
+        <label>Prédio *</label>
+        <select id="oPredi" onchange="updateOcorrenciaSensores()">
+          <option value="Lina">Lina</option>
+          <option value="Pietro">Pietro</option>
+          <option value="Ambos">Ambos</option>
+        </select>
+      </div>
+      <div class="fld">
+        <label>Tipo *</label>
+        <select id="oTipo">
+          <option value="manutencao">Manutenção / Troca de pilha / Calibração</option>
+          <option value="falha_equipamento">Falha de equipamento</option>
+          <option value="obra">Obra ou intervenção no espaço</option>
+          <option value="sensor_deslocado">Sensor deslocado ou fora do lugar</option>
+        </select>
+      </div>
+      <div class="fld">
+        <label>Fonte *</label>
+        <select id="oFonte">
+          <option value="verbal">Verbal</option>
+          <option value="sistema">Notificação do sistema</option>
+          <option value="grupo_climatizacao">Grupo de climatização</option>
+          <option value="email">E-mail</option>
+        </select>
+      </div>
+      <div class="fld"><label>Responsável</label><input type="text" id="oResponsavel" placeholder="Nome de quem registrou"></div>
+      <div class="fld" style="grid-column:1/-1">
+        <label>Descrição *</label>
+        <textarea id="oDescricao" rows="3"
+          style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--sans);font-size:.85rem;resize:vertical"
+          placeholder="Descreva o que aconteceu..."></textarea>
+      </div>
+      <div class="fld" style="grid-column:1/-1">
+        <label>Justificativa para Desvios <small style="color:var(--gray-400);font-weight:400">(opcional)</small></label>
+        <textarea id="oJustificativa" rows="2"
+          style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--sans);font-size:.85rem;resize:vertical"
+          placeholder="Se uma ocorrência explica um desvio de conformidade, descreva aqui como. Ex: 'Janela aberta durante manutenção' ou 'Falha no sistema de umidificação'"></textarea>
+      </div>
+      <div class="fld" style="grid-column:1/-1">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="oAfetaTodo" onchange="toggleSensoresOcorrencia()" style="width:auto;accent-color:var(--red)">
+          Afeta todos os sensores do prédio selecionado
+        </label>
+      </div>
+      <div class="fld" style="grid-column:1/-1" id="oSensoresWrap">
+        <label>Sensores Afetados</label>
+        <div id="oSensoresChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;padding:10px;border:1px solid var(--border);border-radius:var(--radius);min-height:42px;background:var(--white)">
+          <span style="font-family:var(--mono);font-size:.72rem;color:var(--gray-300)">Selecione o prédio primeiro...</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeOcorrenciaModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveOcorrencia()">Salvar</button>
+    </div>
+  </div>
+</div>
+<!-- MODAL: PICOS DETECTADOS ────────────────────────────── -->
+<div class="modal-overlay hidden" id="picosModal">
+  <div class="modal-box" style="width:min(780px,96vw);max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-title">⚠ Picos Detectados no Upload</div>
+    <p class="modal-sub" style="margin-bottom:12px">
+      Foram identificados <strong id="picosCount">0</strong> evento(s) fora do padrão nos dados importados.
+      Selecione os que deseja registrar como ocorrências e confirme.
+    </p>
+
+    <!-- Legenda -->
+    <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+      <span style="font-family:var(--mono);font-size:.68rem;color:var(--gray-400)">
+        <span style="color:#d97706;font-weight:700">■</span> Variação brusca de UR
+      </span>
+      <span style="font-family:var(--mono);font-size:.68rem;color:var(--gray-400)">
+        <span style="color:#E30613;font-weight:700">■</span> Temperatura fora da faixa
+      </span>
+    </div>
+
+    <!-- Lista de picos -->
+    <div id="picosLista" style="flex:1;overflow-y:auto;border:1px solid var(--border);
+         border-radius:var(--radius);padding:4px"></div>
+
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-ghost" onclick="closePicosModal()">Ignorar todos</button>
+      <button class="btn btn-ghost" onclick="toggleTodosPicos(true)"
+        style="font-size:.78rem">☑ Selecionar todos</button>
+      <button class="btn btn-ghost" onclick="toggleTodosPicos(false)"
+        style="font-size:.78rem">☐ Desmarcar todos</button>
+      <button class="btn btn-primary" onclick="salvarPicosSelecionados()">
+        Salvar ocorrências selecionadas
+      </button>
+    </div>
+  </div>
+</div>

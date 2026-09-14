@@ -11,7 +11,7 @@ import sqlite3
 import unicodedata
 from collections import defaultdict
 from datetime import datetime as _dt, date as _date
-from flask import Flask, jsonify, send_file, request, abort
+from flask import Flask, jsonify, send_file, request, abort, render_template
 from functools import wraps
 from conformidade import calcular_conformidade, calcular_ponto_orvalho
 from desvios import calcular_desvios_serie, gerar_relatorio_desvios_sensor
@@ -29,12 +29,15 @@ def _cache_key(endpoint: str, params: dict) -> str:
 
 def cache_get(key: str):
     entry = _CACHE.get(key)
-    if entry and (time.time() - entry["ts"]) < _CACHE_TTL:
+    if entry and (time.time() - entry["ts"]) < entry.get("ttl", _CACHE_TTL):
         return entry["data"]
     return None
 
-def cache_set(key: str, data):
-    _CACHE[key] = {"ts": time.time(), "data": data}
+def cache_set(key: str, data, ttl: int = None):
+    """`ttl` (segundos) sobrepõe o TTL padrão para essa entrada — usado por endpoints
+    caros sobre o histórico completo (ex.: /api/sazonal), que não ficam mais "quentes"
+    de verdade com um TTL de 5 min: cache_invalidate() já limpa tudo a cada upload."""
+    _CACHE[key] = {"ts": time.time(), "data": data, "ttl": ttl or _CACHE_TTL}
 
 def cache_invalidate():
     """Chamado após upload — limpa todo o cache."""
@@ -46,6 +49,117 @@ def normalize_name(s):
     s = unicodedata.normalize('NFD', s)
     s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
     return re.sub(r'[^a-z0-9]', '', s.lower())
+
+
+# ── CRUZAMENTO SENSOR × EXPOSIÇÃO ─────────────────────────
+# Compartilhado entre /api/upload (calcula na ingestão) e /api/admin/recalcular_periodo
+# (recalcula o histórico quando uma exposição é cadastrada/editada depois dos dados já
+# terem sido importados). Mantém as duas rotas sempre em sincronia com a mesma regra.
+#
+# O MASP tem dois prédios (Lina e Pietro) e ambos podem ter andares de MESMO número
+# (ex.: "2º Andar" existe nos dois) — por isso todo o cruzamento é sempre feito por
+# (prédio, andar), nunca só por andar. Sem isso, uma exposição no 2º Andar do Pietro
+# marcaria também o 2º Andar do Lina (e vice-versa).
+
+_ORDINAIS_EXTENSO = {1: "primeiro", 2: "segundo", 3: "terceiro", 4: "quarto",
+                     5: "quinto", 6: "sexto"}
+
+
+def _andar_keywords_padrao(n):
+    """Variações textuais de "Nº andar" usadas para bater com o campo espacos das
+    exposições: "2º andar", "2o andar", "2 andar", "segundo andar"."""
+    kws = [f"{n}º andar", f"{n}o andar", f"{n} andar"]
+    if n in _ORDINAIS_EXTENSO:
+        kws.append(f"{_ORDINAIS_EXTENSO[n]} andar")
+    return kws
+
+
+# Mapeamento: (prédio, andar do sensor) → palavras-chave que devem aparecer no campo
+# espacos da exposição para o cruzamento ser considerado válido.
+_ANDAR_KEYWORDS = {
+    "Lina": {
+        "1º andar":   ["1º andar", "1o andar", "1 andar", "primeiro andar"],
+        "1º subsolo": ["1º subsolo", "1o subsolo", "subsolo exposição", "subsolo mezanino",
+                       "subsolo exposicao", "subsolo mezanino"],
+        "2º subsolo": ["2º subsolo", "2o subsolo", "segundo subsolo"],
+    },
+    "Pietro": {
+        f"{n}º andar": _andar_keywords_padrao(n) for n in range(2, 7)
+    },
+}
+
+
+def _normalizar_texto(s):
+    """Remove acentos e caixa, colapsa espaços múltiplos e trata º/° como iguais —
+    para comparação fuzzy de textos.
+    Sem o colapso de espaços, um espaço duplo digitado no campo "espaços" da exposição
+    (ex.: "1º  Andar expositivo") já é suficiente pra quebrar o match por substring com
+    a palavra-chave "1º andar". E sem tratar º (indicador ordinal, U+00BA) e ° (sinal de
+    grau, U+00B0) como equivalentes, um "1° Andar" digitado com o caractere errado (comum
+    em copiar/colar de outras fontes) também não bate com a palavra-chave "1º andar"."""
+    s = unicodedata.normalize('NFD', (s or '').lower())
+    s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+    s = s.replace('º', 'o').replace('°', 'o')
+    return re.sub(r'\s+', ' ', s).strip()
+
+
+def _eh_acervo_permanente(predio, andar_sensor):
+    """O 2º Andar do LINA é a coleção permanente "Acervo em Transformação" — sempre
+    marcado como expositivo, independente da tabela de exposições. NÃO vale para o
+    Pietro: lá, um andar homônimo (o próprio "2º Andar" do Pietro) recebe exposições
+    temporárias normais, cruzadas com a tabela de exposições como qualquer outro andar."""
+    if (predio or 'Lina') != 'Lina':
+        return False
+    return '2o andar' in _normalizar_texto(andar_sensor or '')
+
+
+def _andar_keywords_for(predio, andar_sensor):
+    """Retorna a lista de palavras-chave do grupo de (prédio, andar) do sensor, ou []
+    se nenhum grupo bater."""
+    andar_norm = _normalizar_texto(andar_sensor or '')
+    grupos = _ANDAR_KEYWORDS.get(predio or 'Lina', {})
+    for andar_key, kws in grupos.items():
+        if _normalizar_texto(andar_key) in andar_norm:
+            return kws
+    return []
+
+
+def _expositivo_para(data_hora_str, predio, andar_sensor, exposicoes, espaco_expositivo=1):
+    """Retorna o NOME da exposição se data_hora cai dentro do período de uma exposição do
+    MESMO prédio cujo espaço bate com o andar do sensor, senão None. `exposicoes` é uma
+    lista de rows com nome/predio/inicio/termino/espacos. `espaco_expositivo` (flag do
+    sensor, sensores.espaco_expositivo) corta o cruzamento de cara para sensores em
+    espaços não-expositivos do mesmo andar de uma galeria — ex.: Ateliê de Restauro e
+    Reservas Técnicas ficam no "1º Andar" junto com "1º andar frente/fundo", mas não são
+    espaço de exibição."""
+    if not data_hora_str or not espaco_expositivo:
+        return None
+
+    predio = predio or 'Lina'
+
+    # 2º andar do Lina — acervo fixo permanente, independe da tabela de exposições
+    if _eh_acervo_permanente(predio, andar_sensor):
+        return "Acervo em Transformação"
+
+    if not exposicoes:
+        return None
+
+    dh = data_hora_str[:10]
+    keywords = _andar_keywords_for(predio, andar_sensor)
+    if not keywords:
+        return None
+
+    for expo in exposicoes:
+        # Exposição com prédio definido só cruza com sensores do mesmo prédio —
+        # essencial agora que "2º Andar" (por exemplo) existe nos dois prédios.
+        expo_predio = expo["predio"] if "predio" in expo.keys() else None
+        if expo_predio and expo_predio not in (predio, 'Ambos'):
+            continue
+        if expo["inicio"][:10] <= dh <= expo["termino"][:10]:
+            espacos_norm = _normalizar_texto(expo["espacos"] or '')
+            if any(_normalizar_texto(kw) in espacos_norm for kw in keywords):
+                return expo["nome"]  # Retorna o nome real!
+    return None
 
 
 def resolve_sensor(con, sensor_nome, cache, sensores_novos_lista):
@@ -155,7 +269,17 @@ def _run_migrations(con):
         ("medicoes", "conforme_umidade",     "INTEGER DEFAULT 0"),
         ("medicoes", "conforme_total",       "INTEGER DEFAULT 0"),
         ("medicoes", "conf_total_hibrido",   "INTEGER DEFAULT 0"),
-        ("medicoes", "periodo_expositivo_nome", "TEXT")
+        ("medicoes", "periodo_expositivo_nome", "TEXT"),
+        # Nem todo sensor de um andar fica em espaço expositivo (ex.: Ateliê de Restauro e
+        # Reservas Técnicas ficam no mesmo andar de galerias, mas não são expositivos).
+        # Default 1 preserva o comportamento anterior até o backfill por nome corrigir os
+        # sensores técnicos conhecidos.
+        ("sensores", "espaco_expositivo", "INTEGER DEFAULT 1"),
+        # Prédio da exposição — necessário desde que o MASP passou a ter dois prédios
+        # (Lina e Pietro) com andares de mesmo número (ex.: "2º Andar" existe nos dois).
+        # Default 'Lina' porque as exposições já cadastradas são todas anteriores ao
+        # cadastro do Pietro no sistema.
+        ("exposicoes", "predio", "TEXT DEFAULT 'Lina'"),
     ]
     for tabela, coluna, tipo in migrations:
         try:
@@ -211,33 +335,37 @@ def optional_auth(f):
     return decorated
 
 
-def cached_endpoint(f):
+def cached_endpoint(f=None, *, ttl: int = None):
     """
-    Decorator que armazena o resultado do endpoint em memória por _CACHE_TTL
-    segundos. A chave de cache inclui todos os query params.
-    Usar apenas em endpoints de leitura (GET).
-    Respostas vazias ([] ou {}) não são cacheadas — evita cachear resultados
-    de queries sem dados que mascarariam dados reais em chamadas posteriores.
+    Decorator que armazena o resultado do endpoint em memória por _CACHE_TTL segundos
+    (ou por `ttl`, se informado — ex.: @cached_endpoint(ttl=3600) para um endpoint caro
+    sobre o histórico completo, que não fica mais "quente" de verdade em 5 min).
+    A chave de cache inclui todos os query params. Usar apenas em endpoints de leitura (GET).
+    Respostas vazias ([] ou {}) não são cacheadas — evita cachear resultados de queries
+    sem dados que mascarariam dados reais em chamadas posteriores.
     """
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        key = _cache_key(request.path, dict(request.args))
-        hit = cache_get(key)
-        if hit is not None:
-            resp = jsonify(hit)
-            resp.headers["X-Cache"] = "HIT"
-            return resp
-        result = f(*args, **kwargs)
-        try:
-            data = result.get_json()
-            # Só cacheia se houver dados — evita persistir respostas vazias
-            if data:
-                cache_set(key, data)
-        except Exception:
-            pass
-        result.headers["X-Cache"] = "MISS"
-        return result
-    return decorated
+    def _decorator(fn):
+        @wraps(fn)
+        def decorated(*args, **kwargs):
+            key = _cache_key(request.path, dict(request.args))
+            hit = cache_get(key)
+            if hit is not None:
+                resp = jsonify(hit)
+                resp.headers["X-Cache"] = "HIT"
+                return resp
+            result = fn(*args, **kwargs)
+            try:
+                data = result.get_json()
+                # Só cacheia se houver dados — evita persistir respostas vazias
+                if data:
+                    cache_set(key, data, ttl=ttl)
+            except Exception:
+                pass
+            result.headers["X-Cache"] = "MISS"
+            return result
+        return decorated
+    # Permite usar tanto @cached_endpoint quanto @cached_endpoint(ttl=...)
+    return _decorator(f) if f is not None else _decorator
 
 
 # ── ROTA PRINCIPAL ────────────────────────────────────────
@@ -251,6 +379,20 @@ def _file_hash(path: str, length: int = 8) -> str:
             return _hashlib.md5(fh.read()).hexdigest()[:length]
     except Exception:
         return "dev"
+
+
+def _combined_hash(paths: list, length: int = 8) -> str:
+    """Hash combinado do conteúdo de vários arquivos — muda se QUALQUER um deles mudar.
+    Usado para o cache-busting único (?v=) aplicado a api.js/ui.js/charts.js/admin.js:
+    um hash baseado só em api.js não pegava mudanças nos outros três."""
+    h = _hashlib.md5()
+    for p in paths:
+        try:
+            with open(p, "rb") as fh:
+                h.update(fh.read())
+        except Exception:
+            h.update(b"dev")
+    return h.hexdigest()[:length]
 
 
 @app.route("/static/api.js")
@@ -275,19 +417,19 @@ def serve_api_js():
 @app.route("/")
 def index():
     """
-    Serve o index.html injetando um hash do api.js na tag <script>.
-    Isso garante que toda vez que o api.js mudar, o navegador baixe a versão nova
-    em vez de usar o cache — sem precisar de Ctrl+Shift+R manual.
+    Serve o index.html injetando um hash combinado dos scripts na tag <script>.
+    Isso garante que toda vez que api.js, ui.js, charts.js ou admin.js mudar, o
+    navegador baixe a versão nova em vez de usar o cache — sem precisar de Ctrl+Shift+R manual.
     """
     from flask import make_response
-    api_js_hash = _file_hash(os.path.join(BASE_DIR, "static", "api.js"))
-    html_path = os.path.join(BASE_DIR, "static", "index.html")
-    with open(html_path, encoding="utf-8") as fh:
-        html = fh.read()
-    html = html.replace(
-        '<script src="/static/api.js"></script>',
-        f'<script src="/static/api.js?v={api_js_hash}"></script>'
-    )
+    static_dir = os.path.join(BASE_DIR, "static")
+    api_js_hash = _combined_hash([
+        os.path.join(static_dir, "api.js"),
+        os.path.join(static_dir, "ui.js"),
+        os.path.join(static_dir, "charts.js"),
+        os.path.join(static_dir, "admin.js"),
+    ])
+    html = render_template("index.html", api_version=api_js_hash)
     resp = make_response(html, 200)
     resp.headers["Content-Type"] = "text/html; charset=utf-8"
     resp.headers["Cache-Control"] = "no-cache, must-revalidate"
@@ -316,7 +458,7 @@ def metricas():
             /* Cálculo da conformidade Híbrida Global */
             ROUND(100.0 * SUM(
                 CASE 
-                    WHEN (s.andar LIKE '%1%andar%' OR s.andar LIKE '%primeiro%') THEN m.conf_total_masp 
+                    WHEN (LOWER(s.nome) LIKE '%1%andar%frente%' OR LOWER(s.nome) LIKE '%primeiro%andar%frente%' OR LOWER(s.nome) LIKE '%1%andar%fundo%' OR LOWER(s.nome) LIKE '%primeiro%andar%fundo%') THEN m.conf_total_masp 
                     ELSE m.conf_total_bizot 
                 END
             ) / COUNT(*), 1) as conf_hibrido
@@ -345,10 +487,10 @@ def pontos():
             ROUND(100.0 * SUM(m.conforme_total) / COUNT(*), 1) as conf_total_ibram,
             ROUND(100.0 * SUM(m.conf_total_masp) / COUNT(*), 1) as conf_total_masp,
             ROUND(100.0 * SUM(m.conf_total_bizot) / COUNT(*), 1) as conf_total_bizot,
-            /* Cálculo dinâmico do Híbrido: se 1º andar usa MASP, senão BIZOT */
+            /* Cálculo dinâmico do Híbrido: apenas 1º Andar Frente e 1º Andar Fundo usam MASP */
             ROUND(100.0 * SUM(
                 CASE 
-                    WHEN (s.andar LIKE '%1%andar%' OR s.andar LIKE '%primeiro%') THEN m.conf_total_masp 
+                    WHEN (LOWER(s.nome) LIKE '%1%andar%frente%' OR LOWER(s.nome) LIKE '%primeiro%andar%frente%' OR LOWER(s.nome) LIKE '%1%andar%fundo%' OR LOWER(s.nome) LIKE '%primeiro%andar%fundo%') THEN m.conf_total_masp 
                     ELSE m.conf_total_bizot 
                 END
             ) / COUNT(*), 1) as conf_total_hibrido
@@ -941,6 +1083,122 @@ def meta():
     })
 
 
+_ESTACOES_ORDEM = ("Verão", "Outono", "Inverno", "Primavera")
+_ESTACOES_MESES = {
+    "Verão": (12, 1, 2), "Outono": (3, 4, 5), "Inverno": (6, 7, 8), "Primavera": (9, 10, 11),
+}
+# mês (1-12) → índice da estação em _ESTACOES_ORDEM — usado no laço quente do /api/sazonal
+# (~3M linhas): indexar uma lista por inteiro é bem mais barato que 2 lookups de dict por
+# string (estação, tipo) repetidos milhões de vezes.
+_MES_PARA_ESTACAO_IDX = {
+    mes: i for i, nome in enumerate(_ESTACOES_ORDEM) for mes in _ESTACOES_MESES[nome]
+}
+
+
+def _percentil(valores_ordenados, p):
+    """Percentil por interpolação linear (mesmo método do padrão 'linear' do numpy/Excel).
+    Espera uma lista JÁ ORDENADA."""
+    n = len(valores_ordenados)
+    if n == 0:
+        return None
+    if n == 1:
+        return valores_ordenados[0]
+    idx = (n - 1) * p
+    lo = int(idx)
+    hi = min(lo + 1, n - 1)
+    frac = idx - lo
+    return valores_ordenados[lo] + (valores_ordenados[hi] - valores_ordenados[lo]) * frac
+
+
+# ── API: PERFIL SAZONAL (Verão/Outono/Inverno/Primavera) ──
+@app.route("/api/sazonal")
+@optional_auth
+@cached_endpoint(ttl=3600)  # varre o histórico inteiro (~3M linhas) — caro demais pra TTL padrão de 5min
+def sazonal():
+    """
+    Perfil sazonal de temperatura e UR: para cada estação do ano, compara a mediana e o
+    IQR (p25–p75) do conjunto de sensores internos ("interno") contra o sensor externo de
+    referência ("externo", ex.: Térreo). Usa o histórico completo — ignora ponto/data,
+    porque precisa de múltiplos anos para um padrão sazonal representativo — e só respeita
+    (opcionalmente) o filtro de periodo_expositivo.
+
+    Parâmetros:
+      ?externo=<nome do sensor de referência>  (padrão: Térreo, mesma heurística do /api/meta)
+      ?periodo_expositivo=1|0                  (opcional)
+
+    Retorno: lista de até 8 objetos (4 estações × interno/externo), cada um com
+    temp_p25/p50/p75/min/max/media e ur_p25/p50/p75/min/max/media.
+    """
+    externo_nome = request.args.get("externo", "Térreo")
+    periodo = request.args.get("periodo_expositivo")
+
+    con = get_db()
+    try:
+        # Resolve o sensor externo — mesma heurística fuzzy do /api/meta (nome/andar com "rreo")
+        externo_row = con.execute("SELECT id FROM sensores WHERE nome = ?", (externo_nome,)).fetchone()
+        if not externo_row:
+            externo_row = con.execute(
+                "SELECT id FROM sensores WHERE nome LIKE '%rreo%' OR andar LIKE '%rreo%' LIMIT 1"
+            ).fetchone()
+        externo_id = externo_row["id"] if externo_row else None
+
+        sql = """
+            SELECT CAST(strftime('%m', data_hora) AS INTEGER) AS mes, sensor_id, temperatura, umidade
+            FROM medicoes
+            WHERE temperatura IS NOT NULL AND umidade IS NOT NULL
+        """
+        params = []
+        if periodo in ("0", "1"):
+            sql += " AND periodo_expositivo = ?"
+            params.append(int(periodo))
+
+        # Um único passe sobre a tabela — percentil exato via ORDER BY/OFFSET custaria um
+        # sort inteiro por (estação × tipo × percentil), muito mais caro que isso.
+        # Usa uma cursor à parte com row_factory=None (tuplas cruas): sqlite3.Row tem
+        # overhead de construção por linha que pesa muito num laço de ~3M iterações, e
+        # aqui só desempacotamos por posição mesmo, não por nome de coluna.
+        # slot = estacao_idx*2 + (0=interno, 1=externo)
+        temp_buckets = [[] for _ in range(8)]
+        umid_buckets = [[] for _ in range(8)]
+        cur = con.cursor()
+        cur.row_factory = None
+        for mes, sensor_id, temp, umid in cur.execute(sql, params):
+            idx = _MES_PARA_ESTACAO_IDX.get(mes)
+            if idx is None:
+                continue
+            slot = idx * 2 + (1 if sensor_id == externo_id else 0)
+            temp_buckets[slot].append(temp)
+            umid_buckets[slot].append(umid)
+
+        resultado = []
+        for i, estacao in enumerate(_ESTACOES_ORDEM):
+            for j, tipo in enumerate(("interno", "externo")):
+                temps = temp_buckets[i * 2 + j]
+                umids = umid_buckets[i * 2 + j]
+                if not temps:
+                    continue
+                temps.sort()
+                umids.sort()
+                resultado.append({
+                    "estacao": estacao, "tipo": tipo,
+                    "temp_p25": round(_percentil(temps, 0.25), 1),
+                    "temp_p50": round(_percentil(temps, 0.50), 1),
+                    "temp_p75": round(_percentil(temps, 0.75), 1),
+                    "temp_min": round(temps[0], 1),
+                    "temp_max": round(temps[-1], 1),
+                    "temp_media": round(sum(temps) / len(temps), 1),
+                    "ur_p25": round(_percentil(umids, 0.25), 1),
+                    "ur_p50": round(_percentil(umids, 0.50), 1),
+                    "ur_p75": round(_percentil(umids, 0.75), 1),
+                    "ur_min": round(umids[0], 1),
+                    "ur_max": round(umids[-1], 1),
+                    "ur_media": round(sum(umids) / len(umids), 1),
+                })
+        return jsonify(resultado)
+    finally:
+        con.close()
+
+
 # ── API: SÉRIE TEMPORAL (para relatórios) ─────────────────
 @app.route("/api/serie")
 @optional_auth
@@ -1191,57 +1449,15 @@ def upload():
     con = get_db()
 
     # Pré-carrega exposições com seus espaços para cruzamento por andar/espaço do sensor
+    # (lógica de cruzamento compartilhada com /api/admin/recalcular_periodo — ver _expositivo_para)
     _exposicoes = con.execute(
-        "SELECT inicio, termino, espacos FROM exposicoes WHERE inicio IS NOT NULL AND termino IS NOT NULL"
+        "SELECT nome, predio, inicio, termino, espacos FROM exposicoes WHERE inicio IS NOT NULL AND termino IS NOT NULL"
     ).fetchall()
 
-    # Mapeamento: andar do sensor → palavras-chave que devem aparecer no campo espacos da exposição
-    # Normalizado para comparação case-insensitive sem acentos
-    _ANDAR_KEYWORDS = {
-        "1º andar":   ["1º andar", "1o andar", "1 andar", "primeiro andar"],
-        "1º subsolo": ["1º subsolo", "1o subsolo", "subsolo exposição", "subsolo mezanino",
-                       "subsolo exposicao", "subsolo mezanino"],
-        "2º subsolo": ["2º subsolo", "2o subsolo", "segundo subsolo"],
-    }
-
-    def _normalizar(s):
-        import unicodedata
-        s = unicodedata.normalize('NFD', (s or '').lower())
-        return ''.join(c for c in s if unicodedata.category(c) != 'Mn')
-
-    def _is_expositivo(data_hora_str, andar_sensor):
-        """Retorna o NOME da exposição se data_hora cai dentro do período, senão None."""
-        if not data_hora_str:
-            return None
-        andar_norm = _normalizar(andar_sensor or '')
-        
-        # 2º andar — acervo fixo permanente
-        if '2º andar' in andar_norm or '2o andar' in andar_norm or '2 andar' in andar_norm:
-            return "Acervo em Transformação"
-            
-        if not _exposicoes:
-            return None
-            
-        dh = data_hora_str[:10]
-        keywords = []
-        for andar_key, kws in _ANDAR_KEYWORDS.items():
-            if _normalizar(andar_key) in andar_norm:
-                keywords = kws
-                break
-        if not keywords:
-            return None
-            
-        for expo in _exposicoes:
-            if expo["inicio"][:10] <= dh <= expo["termino"][:10]:
-                espacos_norm = _normalizar(expo["espacos"] or '')
-                if any(_normalizar(kw) in espacos_norm for kw in keywords):
-                    return expo["nome"] # Retorna o nome real!
-        return None
-
-    # Pré-carrega andar de cada sensor para evitar queries dentro do loop
-    _sensor_andar = {
-        r["id"]: r["andar"]
-        for r in con.execute("SELECT id, andar FROM sensores").fetchall()
+    # Pré-carrega prédio/andar/espaço-expositivo de cada sensor para evitar queries dentro do loop
+    _sensor_info = {
+        r["id"]: r
+        for r in con.execute("SELECT id, predio, andar, espaco_expositivo FROM sensores").fetchall()
     }
     inserted = 0
     duplicates = 0
@@ -1261,9 +1477,15 @@ def upload():
                 data_hora = row.get("data_hora") or row.get("data")
                 temp      = row.get("temperatura")
                 umid      = row.get("umidade") or row.get("umidade_relativa")
-                # Calcula periodo_expositivo cruzando com exposições do mesmo espaço/andar
-                andar_sensor = _sensor_andar.get(sensor_id, '')
-                periodo   = _is_expositivo(data_hora, andar_sensor)
+                # Calcula periodo_expositivo cruzando com exposições do mesmo espaço/andar.
+                # _expositivo_para devolve o NOME da exposição (ou None) — o flag 0/1 gravado em
+                # periodo_expositivo é derivado dele; o nome vai para periodo_expositivo_nome.
+                _info = _sensor_info.get(sensor_id)
+                predio_sensor = _info["predio"] if _info else 'Lina'
+                andar_sensor = _info["andar"] if _info else ''
+                espaco_expositivo = _info["espaco_expositivo"] if _info else 1
+                periodo_nome = _expositivo_para(data_hora, predio_sensor, andar_sensor, _exposicoes, espaco_expositivo)
+                periodo_flag = 1 if periodo_nome else 0
 
                 # Usa calcular_conformidade como fonte única de verdade — os limites
                 # ficam centralizados em conformidade.py e não duplicados aqui.
@@ -1273,13 +1495,13 @@ def upload():
 
                 con.execute("""
                     INSERT OR IGNORE INTO medicoes
-                        (sensor_id, data_hora, temperatura, umidade, periodo_expositivo,
+                        (sensor_id, data_hora, temperatura, umidade, periodo_expositivo, periodo_expositivo_nome,
                          conforme_temperatura, conforme_umidade, conforme_total,
                          conf_temp_masp, conf_umid_masp, conf_total_masp,
                          conf_temp_bizot, conf_umid_bizot, conf_total_bizot)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    sensor_id, data_hora, temp, umid, periodo,
+                    sensor_id, data_hora, temp, umid, periodo_flag, periodo_nome,
                     conf_temp, conf_umid, conf_total,
                     conf_temp_masp, conf_umid_masp, conf_total_masp,
                     conf_temp_bizot, conf_umid_bizot, conf_total_bizot,
@@ -1329,6 +1551,168 @@ def upload():
     return jsonify({
         "status": "ok",
         "lidas": len(rows),
+        "importadas": inserted,
+        "duplicadas": duplicates,
+        "sensores_novos_lista": _sensores_novos_lista,
+        "picos_sugeridos": picos_sugeridos,
+    })
+
+
+# ── API: UPLOAD DE XLSX (dataloggers do Pietro) ───────────
+@app.route("/api/upload_xlsx", methods=["POST"])
+@optional_auth
+def upload_xlsx():
+    """
+    Importa uma planilha .xlsx no formato dos dataloggers do Pietro: colunas
+    "Time stamp" (DD/MM/AAAA HH:MM:SS), "Temperatura Ambiente" e "Umidade Ambiente" —
+    sem coluna de sensor, porque cada arquivo cobre um único ponto de medição.
+    Por isso o sensor é informado à parte, no campo `sensor` do form (nome do sensor,
+    resolvido com a mesma lógica fuzzy/alias do upload de JSON).
+    """
+    if "file" not in request.files:
+        return jsonify({"erro": "Nenhum arquivo enviado"}), 400
+
+    sensor_nome = (request.form.get("sensor") or "").strip()
+    if not sensor_nome:
+        return jsonify({"erro": "Selecione o sensor ao qual esses dados pertencem"}), 400
+
+    try:
+        import openpyxl
+    except ImportError:
+        return jsonify({"erro": "openpyxl não está instalado no servidor (pip install openpyxl)"}), 500
+
+    f = request.files["file"]
+    arquivo_nome = f.filename or "upload.xlsx"
+
+    try:
+        wb = openpyxl.load_workbook(f, read_only=True, data_only=True)
+        ws = wb.active
+        rows_iter = ws.iter_rows(values_only=True)
+        header = next(rows_iter)
+    except Exception as e:
+        return jsonify({"erro": f"XLSX inválido: {e}"}), 400
+
+    # Detecta qual coluna é qual pelo texto do cabeçalho — tolera variações de
+    # acento/caixa/idioma (ex.: "Time stamp", "Data/Hora", "Temperatura Ambiente")
+    col_data = col_temp = col_umid = None
+    for idx, h in enumerate(header or []):
+        hn = _normalizar_texto(str(h) if h is not None else '')
+        if col_data is None and ('time' in hn or 'data' in hn or 'hora' in hn):
+            col_data = idx
+        elif col_temp is None and 'temp' in hn:
+            col_temp = idx
+        elif col_umid is None and ('umid' in hn or 'humid' in hn):
+            col_umid = idx
+
+    if col_data is None or col_temp is None or col_umid is None:
+        return jsonify({
+            "erro": f"Não reconheci as colunas da planilha (cabeçalho: {list(header or [])}). "
+                    "Esperado algo como 'Time stamp', 'Temperatura Ambiente', 'Umidade Ambiente'."
+        }), 400
+
+    con = get_db()
+    try:
+        _sensor_cache = {}
+        _sensores_novos_lista = []
+        sensor_id = resolve_sensor(con, sensor_nome, _sensor_cache, _sensores_novos_lista)
+        if not sensor_id:
+            return jsonify({"erro": f"Não foi possível resolver o sensor '{sensor_nome}'"}), 400
+
+        sensor_row = con.execute(
+            "SELECT predio, andar, espaco_expositivo FROM sensores WHERE id = ?", (sensor_id,)
+        ).fetchone()
+        predio_sensor      = sensor_row["predio"] if sensor_row else 'Lina'
+        andar_sensor       = sensor_row["andar"] if sensor_row else ''
+        espaco_expositivo  = sensor_row["espaco_expositivo"] if sensor_row else 1
+
+        _exposicoes = con.execute(
+            "SELECT nome, predio, inicio, termino, espacos FROM exposicoes WHERE inicio IS NOT NULL AND termino IS NOT NULL"
+        ).fetchall()
+
+        inserted = duplicates = errors = 0
+        periodo_inicio = periodo_fim = None
+
+        for row in rows_iter:
+            try:
+                raw_data = row[col_data]
+                temp     = row[col_temp]
+                umid     = row[col_umid]
+                if raw_data is None or temp is None or umid is None:
+                    errors += 1
+                    continue
+
+                # A maioria dos exports vem como texto "DD/MM/AAAA HH:MM:SS"; se a célula
+                # já vier tipada como data (openpyxl devolve datetime), usa direto.
+                if isinstance(raw_data, str):
+                    dt = _dt.strptime(raw_data.strip(), "%d/%m/%Y %H:%M:%S")
+                elif hasattr(raw_data, "strftime"):
+                    dt = raw_data
+                else:
+                    errors += 1
+                    continue
+                data_hora = dt.strftime("%Y-%m-%d %H:%M:%S")
+
+                periodo_nome = _expositivo_para(data_hora, predio_sensor, andar_sensor, _exposicoes, espaco_expositivo)
+                periodo_flag = 1 if periodo_nome else 0
+
+                (conf_temp, conf_umid, conf_total,
+                 conf_temp_masp, conf_umid_masp, conf_total_masp,
+                 conf_temp_bizot, conf_umid_bizot, conf_total_bizot) = calcular_conformidade(float(temp), float(umid))
+
+                con.execute("""
+                    INSERT OR IGNORE INTO medicoes
+                        (sensor_id, data_hora, temperatura, umidade, periodo_expositivo, periodo_expositivo_nome,
+                         conforme_temperatura, conforme_umidade, conforme_total,
+                         conf_temp_masp, conf_umid_masp, conf_total_masp,
+                         conf_temp_bizot, conf_umid_bizot, conf_total_bizot)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    sensor_id, data_hora, float(temp), float(umid), periodo_flag, periodo_nome,
+                    conf_temp, conf_umid, conf_total,
+                    conf_temp_masp, conf_umid_masp, conf_total_masp,
+                    conf_temp_bizot, conf_umid_bizot, conf_total_bizot,
+                ))
+                if con.execute("SELECT changes()").fetchone()[0]:
+                    inserted += 1
+                    if periodo_inicio is None or data_hora < periodo_inicio:
+                        periodo_inicio = data_hora
+                    if periodo_fim is None or data_hora > periodo_fim:
+                        periodo_fim = data_hora
+                else:
+                    duplicates += 1
+            except Exception:
+                errors += 1
+                continue
+
+        total_lidas = inserted + duplicates + errors
+        obs = (f"Importação XLSX (dataloggers Pietro) em {_dt.now().strftime('%Y-%m-%d %H:%M:%S')}. "
+               f"Sensor: {sensor_nome}. Erros: {errors}")
+        con.execute("""
+            INSERT INTO importacoes
+                (arquivo_nome, data_importacao, total_medicoes, medicoes_importadas,
+                 medicoes_duplicadas, sensores_novos, periodo_inicio, periodo_fim, status, observacoes)
+            VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, 'SUCESSO', ?)
+        """, (arquivo_nome, total_lidas, inserted, duplicates, len(_sensores_novos_lista),
+              periodo_inicio, periodo_fim, obs))
+        con.commit()
+    except Exception as e:
+        con.rollback()
+        return jsonify({"erro": f"Erro na importação: {e}"}), 500
+    finally:
+        con.close()
+
+    cache_invalidate()
+
+    picos_sugeridos = []
+    if inserted > 0 and periodo_inicio and periodo_fim:
+        try:
+            picos_sugeridos = _detectar_picos(periodo_inicio, periodo_fim)
+        except Exception:
+            pass  # detecção é best-effort — não bloqueia o upload
+
+    return jsonify({
+        "status": "ok",
+        "lidas": total_lidas,
         "importadas": inserted,
         "duplicadas": duplicates,
         "sensores_novos_lista": _sensores_novos_lista,
@@ -1545,9 +1929,9 @@ def admin_sensores_create():
     con = get_db()
     try:
         con.execute(
-            "INSERT INTO sensores (nome, localizacao, andar, descricao, ativo, data_instalacao, predio) VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO sensores (nome, localizacao, andar, descricao, ativo, data_instalacao, predio, espaco_expositivo) VALUES (?,?,?,?,?,?,?,?)",
             (d["nome"], d.get("localizacao"), d.get("andar"), d.get("descricao"),
-             d.get("ativo", 1), d.get("data_instalacao"), predio)
+             d.get("ativo", 1), d.get("data_instalacao"), predio, d.get("espaco_expositivo", 1))
         )
         new_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
         con.commit()
@@ -1568,9 +1952,9 @@ def admin_sensores_update(sid):
     con = get_db()
     try:
         con.execute(
-            "UPDATE sensores SET nome=?, localizacao=?, andar=?, descricao=?, ativo=?, data_instalacao=?, predio=? WHERE id=?",
+            "UPDATE sensores SET nome=?, localizacao=?, andar=?, descricao=?, ativo=?, data_instalacao=?, predio=?, espaco_expositivo=? WHERE id=?",
             (d["nome"], d.get("localizacao"), d.get("andar"), d.get("descricao"),
-             d.get("ativo", 1), d.get("data_instalacao"), predio, sid)
+             d.get("ativo", 1), d.get("data_instalacao"), predio, d.get("espaco_expositivo", 1), sid)
         )
         con.commit()
         return jsonify({"status": "ok"})
@@ -1720,10 +2104,10 @@ def admin_exposicoes_create():
     con = get_db()
     try:
         con.execute(
-            """INSERT INTO exposicoes (ano, nome, inicio_preparacao, inicio, termino, termino_desmontagem, espacos)
-               VALUES (?,?,?,?,?,?,?)""",
+            """INSERT INTO exposicoes (ano, nome, inicio_preparacao, inicio, termino, termino_desmontagem, espacos, predio)
+               VALUES (?,?,?,?,?,?,?,?)""",
             (d.get("ano"), d["nome"], d.get("inicio_preparacao"),
-             d["inicio"], d["termino"], d.get("termino_desmontagem"), d.get("espacos"))
+             d["inicio"], d["termino"], d.get("termino_desmontagem"), d.get("espacos"), d.get("predio", "Lina"))
         )
         con.commit()
         new_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -1744,9 +2128,9 @@ def admin_exposicoes_update(eid):
     try:
         con.execute(
             """UPDATE exposicoes SET ano=?, nome=?, inicio_preparacao=?, inicio=?, termino=?,
-               termino_desmontagem=?, espacos=? WHERE id=?""",
+               termino_desmontagem=?, espacos=?, predio=? WHERE id=?""",
             (d.get("ano"), d["nome"], d.get("inicio_preparacao"),
-             d["inicio"], d["termino"], d.get("termino_desmontagem"), d.get("espacos"), eid)
+             d["inicio"], d["termino"], d.get("termino_desmontagem"), d.get("espacos"), d.get("predio", "Lina"), eid)
         )
         con.commit()
         return jsonify({"status": "ok"})
@@ -1779,13 +2163,97 @@ def admin_importacoes_list():
 @app.route("/api/admin/recalcular_periodo", methods=["POST"])
 @optional_auth
 def admin_recalcular_periodo():
-    return jsonify({
-        "status": "ok",
-        "marcadas_expositivo": 0,
-        "fora_expositivo": 0,
-        "exposicoes_usadas": 0,
-        "sensores_processados": 0
-    })
+    """
+    Recalcula periodo_expositivo/periodo_expositivo_nome de TODAS as medições já
+    importadas, cruzando com o estado atual da tabela exposicoes.
+
+    Necessário sempre que uma exposição é cadastrada ou editada DEPOIS que as medições
+    do período já foram importadas — o /api/upload só calcula o cruzamento uma vez, no
+    momento da importação, então dados já no banco não são atualizados sozinhos.
+
+    Usa UPDATEs em lote por (grupo de andar × exposição) em vez de percorrer medição por
+    medição em Python — o resultado é o mesmo de _expositivo_para, só que muito mais rápido
+    em bancos grandes.
+    """
+    con = get_db()
+    try:
+        # 1. Zera tudo — recomeça do zero para não deixar nome/flag desatualizados de
+        #    exposições que foram editadas ou removidas
+        con.execute("UPDATE medicoes SET periodo_expositivo = 0, periodo_expositivo_nome = NULL")
+
+        # Só considera sensores marcados como espaço expositivo — Ateliê de Restauro,
+        # Reservas Técnicas, CP etc. ficam no mesmo andar de galerias mas não são expositivos
+        sensores = [
+            s for s in con.execute("SELECT id, predio, andar FROM sensores WHERE espaco_expositivo = 1").fetchall()
+        ]
+        exposicoes = con.execute(
+            "SELECT nome, predio, inicio, termino, espacos FROM exposicoes WHERE inicio IS NOT NULL AND termino IS NOT NULL"
+        ).fetchall()
+
+        sensores_processados_ids = set()
+
+        # 2. 2º andar do Lina — acervo fixo permanente, vale para todas as datas. NÃO se aplica
+        #    ao 2º Andar do Pietro (mesmo número, prédio diferente, exposição temporária normal).
+        acervo_permanente_ids = [s["id"] for s in sensores if _eh_acervo_permanente(s["predio"], s["andar"])]
+        if acervo_permanente_ids:
+            placeholders = ",".join("?" * len(acervo_permanente_ids))
+            con.execute(
+                f"UPDATE medicoes SET periodo_expositivo = 1, periodo_expositivo_nome = ? "
+                f"WHERE sensor_id IN ({placeholders})",
+                ["Acervo em Transformação"] + acervo_permanente_ids
+            )
+            sensores_processados_ids.update(acervo_permanente_ids)
+
+        # 3. Demais andares — cruza cada exposição com os sensores do MESMO PRÉDIO cujo andar
+        #    bate com o espaço correspondente. Aplica em ordem reversa à da lista de exposições:
+        #    como _expositivo_para (usado no upload) retorna a PRIMEIRA exposição da lista que
+        #    bate em caso de sobreposição de datas no mesmo espaço, aplicar de trás para frente
+        #    faz o UPDATE dessa primeira exposição ser o último a rodar — e por isso prevalecer.
+        exposicoes_usadas = 0
+        for expo in reversed(exposicoes):
+            expo_predio = expo["predio"] if "predio" in expo.keys() else None
+            sensor_ids = [
+                s["id"] for s in sensores
+                if s["id"] not in acervo_permanente_ids
+                and (not expo_predio or expo_predio in (s["predio"] or 'Lina', 'Ambos'))
+                and _andar_keywords_for(s["predio"], s["andar"])
+                and any(
+                    _normalizar_texto(kw) in _normalizar_texto(expo["espacos"] or '')
+                    for kw in _andar_keywords_for(s["predio"], s["andar"])
+                )
+            ]
+            if not sensor_ids:
+                continue
+            placeholders = ",".join("?" * len(sensor_ids))
+            con.execute(
+                f"UPDATE medicoes SET periodo_expositivo = 1, periodo_expositivo_nome = ? "
+                f"WHERE sensor_id IN ({placeholders}) AND date(data_hora) BETWEEN date(?) AND date(?)",
+                [expo["nome"]] + sensor_ids + [expo["inicio"], expo["termino"]]
+            )
+            sensores_processados_ids.update(sensor_ids)
+            exposicoes_usadas += 1
+
+        # Conta o resultado final direto no banco — evita contagem duplicada quando duas
+        # exposições sobrepõem datas no mesmo espaço (a mesma medição seria tocada 2x pelos UPDATEs acima)
+        total = con.execute("SELECT COUNT(*) AS n FROM medicoes").fetchone()["n"]
+        marcadas_expositivo = con.execute(
+            "SELECT COUNT(*) AS n FROM medicoes WHERE periodo_expositivo = 1"
+        ).fetchone()["n"]
+
+        con.commit()
+        cache_invalidate()
+        return jsonify({
+            "status": "ok",
+            "marcadas_expositivo": marcadas_expositivo,
+            "fora_expositivo": max(total - marcadas_expositivo, 0),
+            "exposicoes_usadas": exposicoes_usadas,
+            "sensores_processados": len(sensores_processados_ids),
+        })
+    except Exception as e:
+        con.rollback()
+        return jsonify({"erro": str(e)}), 500
+    finally:
+        con.close()
 
 # ── API: OCORRÊNCIAS (Leitura e Exclusão) ─────────────────
 @app.route("/api/ocorrencias")

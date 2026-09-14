@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MASP — Climatização</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<!-- ── HEADER ──────────────────────────────────────────── -->
+<header class="site-header">
+  <div class="logo">MASP<em>_</em></div>
+  <div class="header-status">
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-label" id="statusLabel">CONECTANDO...</span>
+  </div>
+  <div class="header-meta">
+    MONITORAMENTO DE CLIMATIZAÇÃO<br>
+    PARÂMETROS IBRAM · MASP · BIZOT
+  </div>
+</header>
+
+<div class="shell">
+
+  <!-- INFO BANNER -->
+  <div class="info-banner" id="infoBanner">⏳ Conectando ao banco de dados...</div>
+
+  <!-- UPLOAD -->
+  <div class="upload-zone" id="uploadZone">
+    <div class="upload-icon">⬆</div>
+    <h2>Importar Dados</h2>
+    <p>Arraste arquivos JSON, CSV ou XLSX do sistema de climatização, ou selecione manualmente.</p>
+    <button class="upload-btn" onclick="document.getElementById('fileIn').click()">
+      ▲ Selecionar Arquivo(s)
+    </button>
+    <input type="file" id="fileIn" accept=".json,.csv,.CSV,.xlsx,.XLSX" multiple style="display:none">
+    <p class="sub">Formatos aceitos: <strong>.json</strong> · <strong>.csv</strong> (testo, automação) · <strong>.xlsx</strong> (dataloggers do Pietro)</p>
+    <div class="progress-wrap hidden" id="progWrap">
+      <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+      <div class="file-list" id="fileList"></div>
+    </div>
+  </div>
+
+  <!-- FILTROS -->
+  <div class="filter-bar">
+    <div class="filter-bar-header">
+      <span class="filter-bar-title">Filtros</span>
+      <span class="filter-info" id="filterInfo">Carregando...</span>
+    </div>
+
+    <!-- PONTOS: chip selector sempre visível, agrupado por andar -->
+    <div class="chip-section">
+      <div class="chip-section-hdr">
+        <span class="chip-section-lbl">Pontos de Medição</span>
+        <div class="chip-section-acts">
+          <button class="chip-act-btn" onclick="selectAllPontos(true)">Todos</button>
+          <span class="chip-act-sep">·</span>
+          <button class="chip-act-btn" onclick="selectAllPontos(false)">Nenhum</button>
+        </div>
+      </div>
+      <div class="chip-groups" id="fPontoGroups">
+        <div style="font-family:var(--mono);font-size:.72rem;color:var(--gray-300)">Carregando pontos…</div>
+      </div>
+    </div>
+
+    <!-- CONTROLES: período + datas + ações -->
+    <div class="filter-controls-row">
+      <div class="fld">
+        <label>Período Expositivo</label>
+        <div class="seg-ctrl" id="fPeriodo">
+          <button class="seg-btn active" data-val="" onclick="selectSeg(this);applyFilters()">Todos</button>
+          <button class="seg-btn" data-val="1" onclick="selectSeg(this);applyFilters()">Expositivo</button>
+          <button class="seg-btn" data-val="0" onclick="selectSeg(this);applyFilters()">Fora de exp.</button>
+        </div>
+      </div>
+      <div class="fld">
+        <label>Intervalo de Datas</label>
+        <div class="date-range">
+          <input type="date" id="fDataIni">
+          <span class="date-range-sep">—</span>
+          <input type="date" id="fDataFim">
+        </div>
+      </div>
+      <div class="filter-actions">
+        <button class="btn btn-ghost" onclick="clearFilters()">Limpar</button>
+        <button class="btn btn-primary" onclick="applyFilters()">▶ Aplicar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MÉTRICAS -->
+  <div class="metrics-strip">
+    <div class="metric-tile">
+      <div class="trend">🏛</div>
+      <div class="lbl">Total IBRAM</div>
+      <div class="val" id="mTotal">–</div>
+      <div class="sub">18–22°C / 50–60% UR</div>
+    </div>
+    
+    <div class="metric-tile">
+      <div class="trend">🎨</div>
+      <div class="lbl">Total MASP</div>
+      <div class="val" id="mMasp">–</div>
+      <div class="sub">18–23°C / 45–55% UR</div>
+    </div>
+    <div class="metric-tile">
+      <div class="trend">✦</div>
+      <div class="lbl">Total Bizot</div>
+      <div class="val" id="mBizot">–</div>
+      <div class="sub">15–25°C / 40–60% UR</div>
+    </div>
+    <div class="metric-tile">
+      <div class="trend">📊</div>
+      <div class="lbl">Total Medições</div>
+      <div class="val" id="mMed">–</div>
+      <div class="sub">pontos ativos</div>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs-nav">
+    <button class="tab-btn active" onclick="switchTab('visao',this)">Visão Geral</button>
+    <button class="tab-btn" onclick="switchTab('pontos',this)">Pontos de Medição</button>
+    <button class="tab-btn" onclick="switchTab('exposicoes',this)">Exposições</button>
+    <button class="tab-btn" onclick="switchTab('alertas',this)">Alertas</button>
+    <button class="tab-btn" onclick="switchTab('ocorrencias',this)">Ocorrências</button>
+    <button class="tab-btn" onclick="switchTab('relatorio',this)">Relatório</button>
+    <button class="tab-btn" onclick="switchTab('gerenciar',this);loadGerenciar()">Gerenciar</button>
+  </div>
+
+  <!-- TAB: VISÃO GERAL ──────────────────────────────── -->
+  <div class="tab-pane active" id="tab-visao">
+    <div class="card">
+      <div class="card-title">Conformidade por Parâmetro</div>
+      <div class="prog-item">
+        <div class="prog-header">
+          <span class="prog-name">🏛 IBRAM — T (18–22°C) + UR (50–60%) combinados</span>
+          <span class="prog-pct" id="pct0">–</span>
+        </div>
+        <div class="prog-track"><div class="prog-fill-bar fill-green" style="width:0" data-w="0"></div></div>
+      </div>
+      <div class="prog-item">
+        <div class="prog-header">
+          <span class="prog-name">🎨 MASP — T (18–23°C) + UR (45–55%) combinados</span>
+          <span class="prog-pct" id="pct1">–</span>
+        </div>
+        <div class="prog-track"><div class="prog-fill-bar fill-red" style="width:0" data-w="0"></div></div>
+      </div>
+      <div class="prog-item">
+        <div class="prog-header">
+          <span class="prog-name">✦ Bizot — T (15–25°C) + UR (40–60%) combinados</span>
+          <span class="prog-pct" id="pct2">–</span>
+        </div>
+        <div class="prog-track"><div class="prog-fill-bar fill-blue" style="width:0" data-w="0"></div></div>
+      </div>
+    </div>
+
+    <!-- EVOLUÇÃO TEMPORAL — gráfico largo com granularidade -->
+    <div class="card">
+      <div class="card-title">Evolução Temporal de Conformidade</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <span class="chart-note" style="margin-bottom:0" id="mensalSubtitle">% de medições dentro das faixas</span>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <!-- Granularidade -->
+          <div class="seg-ctrl" id="segGranularidade" style="font-size:.72rem">
+            <button class="seg-btn" data-gran="hora"  onclick="selectSeg(this);loadMensal(window._lastFilters||{})">Hora a hora</button>
+            <button class="seg-btn" data-gran="dia"   onclick="selectSeg(this);loadMensal(window._lastFilters||{})">Dia a dia</button>
+            <button class="seg-btn active" data-gran="mes" onclick="selectSeg(this);loadMensal(window._lastFilters||{})">Mês a mês</button>
+            <button class="seg-btn" data-gran="ano"   onclick="selectSeg(this);loadMensal(window._lastFilters||{})">Ano a ano</button>
+          </div>
+          <!-- Padrão normativo -->
+          <div class="seg-ctrl" id="segMensal" style="font-size:.72rem">
+            <button class="seg-btn active" data-mensal="ibram" onclick="selectSeg(this);renderMensal()">IBRAM</button>
+            <button class="seg-btn" data-mensal="masp"  onclick="selectSeg(this);renderMensal()">MASP</button>
+            <button class="seg-btn" data-mensal="bizot" onclick="selectSeg(this);renderMensal()">Bizot</button>
+            <button class="seg-btn" data-mensal="todos" onclick="selectSeg(this);renderMensal()">Todos</button>
+          </div>
+          <div class="info-icon-wrap" id="infoMensal">
+            <i class="info-icon" onclick="toggleInfoPopover('infoMensal')">i</i>
+            <div class="info-popover">
+              <strong>Como ler este gráfico</strong>
+              Cada ponto representa o período selecionado (hora, dia, mês ou ano).
+              O eixo Y mostra o percentual de medições dentro da faixa do padrão selecionado.
+              <ul>
+                <li><span class="ip-swatch" style="background:#E30613"></span><b>Temp %</b> — leituras dentro da faixa de temperatura</li>
+                <li><span class="ip-swatch" style="background:#1d4ed8"></span><b>UR %</b> — leituras dentro da faixa de umidade relativa</li>
+                <li><span class="ip-swatch" style="background:#16a34a"></span><b>Total</b> — leituras em que <em>ambos</em> estão conformes</li>
+              </ul>
+              <div style="margin-top:8px;color:var(--gray-400)">
+                Linha verde tracejada = meta 90%. Laranja = limiar de atenção 70%.<br>
+                Hora a hora e dia a dia mostram variações intra-mensais.<br>
+                Limitado a 2.000 pontos por consulta.
+              </div>
+            </div>
+          </div>
+          <button
+            id="btnExportMensal"
+            onclick="exportMensalChart()"
+            title="Exportar gráfico como PNG"
+            style="
+              display:inline-flex;align-items:center;gap:5px;
+              padding:5px 12px;
+              font-family:var(--mono);font-size:.65rem;letter-spacing:1.5px;
+              border:1px solid var(--border-strong);border-radius:var(--radius);
+              background:var(--white);color:var(--gray-500);
+              cursor:pointer;transition:all .15s;white-space:nowrap;
+              text-transform:uppercase;
+            "
+            onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)'"
+            onmouseout="this.style.borderColor='var(--border-strong)';this.style.color='var(--gray-500)'"
+          >↓ PNG</button>
+        </div>
+      </div>
+      <div style="position:relative;height:420px"><canvas id="cMensal"></canvas></div>
+      <!-- Legenda fora do canvas — evita sobreposição com dados em 90–100% -->
+      <div class="mensal-expo-legend" id="mensalExpoLegend" style="display:none"></div>
+      <div style="margin-top:10px;padding:9px 14px;background:#fafaf9;border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:flex-start;gap:8px">
+        <span style="font-size:.9rem;flex-shrink:0">ℹ</span>
+        <span style="font-family:var(--mono);font-size:.68rem;color:var(--gray-400);line-height:1.6;letter-spacing:.2px">
+          Este gráfico sempre exibe <strong style="color:var(--gray-500)">todos os dados</strong> — o filtro de Período Expositivo não é aplicado aqui para manter a continuidade das curvas.
+          <span style="color:rgba(227,6,19,.8)">■</span> fundo sólido = período inteiramente expositivo &nbsp;·&nbsp;
+          <span style="color:rgba(227,6,19,.5)">▤</span> listrado = período misto (montagem ou desmontagem em andamento).
+          Passe o mouse sobre qualquer ponto para ver a proporção expositivo/fora de exposição naquele período.
+        </span>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Conformidade por Sensor — visão acumulada</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+          <span class="chart-note" style="margin-bottom:0">Barras horizontais ordenadas por conformidade de UR</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="seg-ctrl" id="segSensores" style="font-size:.72rem">
+              <button class="seg-btn active" data-sensores="ibram" onclick="selectSeg(this);renderSensores()">IBRAM</button>
+              <button class="seg-btn" data-sensores="masp"  onclick="selectSeg(this);renderSensores()">MASP</button>
+              <button class="seg-btn" data-sensores="bizot" onclick="selectSeg(this);renderSensores()">Bizot</button>
+            </div>
+            <div class="info-icon-wrap" id="infoSensores">
+              <i class="info-icon" onclick="toggleInfoPopover('infoSensores')">i</i>
+              <div class="info-popover">
+                <strong>Como ler este gráfico</strong>
+                Cada linha é um sensor. As barras mostram o percentual de leituras dentro da faixa do padrão selecionado.
+                <ul>
+                  <li><span class="ip-swatch" style="background:#E30613"></span><b>Temperatura %</b> — leituras dentro da faixa de temperatura</li>
+                  <li><span class="ip-swatch" style="background:#1d4ed8"></span><b>UR %</b> — leituras dentro da faixa de umidade relativa</li>
+                </ul>
+                <div style="margin-top:8px;color:var(--gray-400)">
+                  Sensores ordenados do menor para o maior índice de UR.<br>
+                  Linha verde tracejada = meta 90%.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="chart-wrap chart-wrap-tall"><canvas id="cSensores"></canvas></div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
+          <div class="card-title" style="margin-bottom:0">Não-Conformidade por Hora do Dia</div>
+          <div class="info-icon-wrap" id="infoHorario" style="margin-top:2px;flex-shrink:0">
+            <i class="info-icon" onclick="toggleInfoPopover('infoHorario')">i</i>
+            <div class="info-popover">
+              <strong>Como ler este gráfico</strong>
+              Cada barra representa uma hora do dia (00h–23h). A altura indica o percentual de leituras <em>fora</em> da faixa naquele horário.
+              <ul>
+                <li><span class="ip-swatch" style="background:#1d4ed8"></span><b>UR</b> — leituras fora da faixa de umidade do padrão selecionado</li>
+                <li><span class="ip-swatch" style="background:#E30613"></span><b>Temp</b> — leituras fora da faixa de temperatura do padrão selecionado</li>
+              </ul>
+              <div style="margin-top:8px;color:var(--gray-400)">
+                Picos em determinados horários indicam padrões de climatização — ex.: temperatura subindo durante o expediente ou umidade caindo à noite.<br>
+                Selecione um sensor específico para identificar anomalias pontuais.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+          <span class="chart-note" style="margin:0;flex:1;min-width:120px">% de leituras fora da faixa — identifica padrões diurnos/noturnos</span>
+          <select id="selHorarioSensor" style="font-family:var(--mono);font-size:.72rem;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--white);color:var(--black);cursor:pointer" onchange="loadHorario(window._lastFilters||{})">
+            <option value="">Todos os sensores</option>
+          </select>
+          <div class="seg-ctrl" id="segHorario" style="font-size:.72rem">
+            <button class="seg-btn active" data-horario="ibram" onclick="selectSeg(this);loadHorario(window._lastFilters||{})">IBRAM</button>
+            <button class="seg-btn" data-horario="masp"  onclick="selectSeg(this);loadHorario(window._lastFilters||{})">MASP</button>
+            <button class="seg-btn" data-horario="bizot" onclick="selectSeg(this);loadHorario(window._lastFilters||{})">Bizot</button>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas id="cHorario"></canvas></div>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
+          <div class="card-title" style="margin-bottom:0">Padrão Sazonal — Interno vs Externo</div>
+          <div class="info-icon-wrap" id="infoSazonal" style="margin-top:2px;flex-shrink:0">
+            <i class="info-icon" onclick="toggleInfoPopover('infoSazonal')">i</i>
+            <div class="info-popover">
+              <strong>Como ler este gráfico</strong>
+              A linha mostra a mediana de cada estação. A área sombreada é o intervalo interquartil (onde ficam 50% das leituras).
+              <ul>
+                <li><span class="ip-swatch" style="background:#E30613"></span><b>Interno</b> — média de todos os sensores internos</li>
+                <li><span class="ip-swatch" style="background:#6366f1"></span><b>Externo (Térreo)</b> — condições climáticas externas pelo datalogger</li>
+              </ul>
+              <div style="margin-top:8px;color:var(--gray-400)">
+                Estações (hemisfério sul): Verão (dez–fev), Outono (mar–mai), Inverno (jun–ago), Primavera (set–nov).<br>
+                Quanto mais a banda vermelha se mantém dentro da faixa do padrão selecionado, mais eficaz o sistema de climatização naquela estação.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+          <span class="chart-note" style="margin:0;flex:1;min-width:120px">Distribuição por estação do ano — hemisfério sul</span>
+          <div class="seg-ctrl" id="segSazonalCampo" style="font-size:.72rem">
+            <button class="seg-btn active" data-sazonal="temp" onclick="selectSeg(this);renderSazonal()">Temperatura</button>
+            <button class="seg-btn" data-sazonal="ur"   onclick="selectSeg(this);renderSazonal()">Umidade</button>
+          </div>
+          <div class="seg-ctrl" id="segSazonalPadrao" style="font-size:.72rem">
+            <button class="seg-btn active" data-padrao-sazonal="ibram"  onclick="selectSeg(this);renderSazonal()">IBRAM</button>
+            <button class="seg-btn" data-padrao-sazonal="masp"   onclick="selectSeg(this);renderSazonal()">MASP</button>
+            <button class="seg-btn" data-padrao-sazonal="bizot"  onclick="selectSeg(this);renderSazonal()">Bizot</button>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas id="cSazonal"></canvas></div>
+      </div>
+    </div>
+    <!-- CARD: PONTO DE ORVALHO ──────────────────────────── -->
+    <div class="card">
+      <div class="card-header">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="card-title" style="margin:0">Dinâmica do Ponto de Orvalho</span>
+          <div class="info-icon-wrap" id="infoOrvalho">
+            <i class="info-icon" onclick="toggleInfoPopover('infoOrvalho')">i</i>
+            <div class="info-popover" style="width:300px">
+              <strong>Como ler este gráfico</strong>
+              Mostra a evolução de três variáveis no período selecionado:
+              <ul style="margin-top:6px">
+                <li><b style="color:#f97316">━</b> <b>Temperatura</b> do ar (eixo esquerdo)</li>
+                <li><b style="color:#06b6d4">╌</b> <b>Umidade Relativa</b> (eixo direito)</li>
+                <li><b style="color:#1e3a5f">━</b> <b>Ponto de Orvalho</b> com área sombreada (eixo esquerdo)</li>
+              </ul>
+              <div style="margin-top:8px">
+                <strong>O risco de condensação</strong> ocorre quando a linha do Ponto de Orvalho
+                se aproxima da linha de Temperatura. Quanto menor a distância entre elas,
+                maior o risco de vapor d'água condensar nas superfícies do acervo.
+              </div>
+              <div style="margin-top:8px;color:var(--gray-400)">
+                A granularidade se ajusta ao período: ≤ 3 dias exibe médias horárias,
+                períodos maiores exibem médias diárias.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:var(--mono);font-size:.65rem;color:var(--gray-400);letter-spacing:1px">SENSOR</span>
+          <select id="selOrvalhoSensor"
+                  onchange="loadOrvalho(window._lastFilters||{})"
+                  style="font-family:var(--mono);font-size:.72rem;padding:5px 10px;
+                         border:1px solid var(--border);border-radius:var(--radius);
+                         background:var(--white);color:var(--black);cursor:pointer;
+                         min-width:200px">
+            <option value="">— selecione um sensor —</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="orvalhoWrap">
+        <div style="font-family:var(--mono);font-size:.75rem;color:var(--gray-400);
+                    padding:40px;text-align:center;letter-spacing:1px">
+          SELECIONE UM SENSOR PARA VISUALIZAR O PONTO DE ORVALHO
+        </div>
+      </div>
+    </div>
+
+
+  </div><!-- /tab-visao -->
+  <div class="tab-pane" id="tab-pontos">
+    <div class="card">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <span>Análise por Ponto de Medição</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:var(--mono);font-size:.7rem;color:var(--gray-400);letter-spacing:1px">PADRÃO</span>
+          <div class="seg-ctrl" id="segPadrão">
+            <button class="seg-btn active" data-padrao="ibram" onclick="selectSeg(this);renderPontosTable()">IBRAM</button>
+            <button class="seg-btn" data-padrao="masp"  onclick="selectSeg(this);renderPontosTable()">MASP</button>
+            <button class="seg-btn" data-padrao="bizot" onclick="selectSeg(this);renderPontosTable()">Bizot</button>
+          </div>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead id="tPontosHead">
+            <tr>
+              <th>Ponto</th><th>Andar</th><th>Status</th><th>Medições</th>
+              <th>Total</th><th>Temperatura</th><th>Umidade Rel.</th>
+              <th>T Média</th><th>UR Média</th>
+            </tr>
+          </thead>
+          <tbody id="tPontos"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Posicionamento T Médio × UR Média — Zona IBRAM</div>
+      <div class="chart-note">Cada ponto = sensor. Zonas: vermelho = IBRAM (18–22°C / 50–60%), laranja = MASP (18–23°C / 45–55% UR), azul = Bizot (15–25°C / 40–60%). Cor do ponto = conformidade MASP.</div>
+      <div class="chart-wrap chart-wrap-tall"><canvas id="cScatter"></canvas></div>
+    </div>
+  </div>
+
+  <!-- TAB: EXPOSIÇÕES ──────────────────────────────────── -->
+  <div class="tab-pane" id="tab-exposicoes">
+    <div class="card">
+      <div class="card-title">Conformidade Durante Períodos Expositivos</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Exposição</th><th>Período</th><th>Espaços</th><th>Medições</th>
+              <th>Total IBRAM</th><th>Total MASP</th><th>Total Bizot</th><th>Classificação</th>
+            </tr>
+          </thead>
+          <tbody id="tExposicoes"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Comparativo de Exposições</div>
+      <div class="chart-wrap"><canvas id="cExpoComp"></canvas></div>
+    </div>
+  </div>
+
+  <!-- TAB: ALERTAS ──────────────────────────────────────── -->
+  <div class="tab-pane" id="tab-alertas">
+    <div class="alert-box" id="alertBox">
+      <div class="alert-box-header" onclick="toggleAlerts()">
+        <span class="alert-box-title">⚠ Variação de Umidade &gt; 10% em 24h</span>
+        <span class="alert-count-pill" id="alertPill">–</span>
+        <span class="alert-count-pill" id="alertPill">–</span>
+        <button onclick="event.stopPropagation(); exportAlertasPDF()" title="Exportar tabela de alertas em PDF" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;font-family:var(--mono);font-size:.65rem;letter-spacing:1px;border:1px solid var(--amber);border-radius:var(--radius);background:var(--amber-light);color:#92400e;cursor:pointer;transition:all .15s;text-transform:uppercase;margin-left:8px;" onmouseover="this.style.background='var(--amber)';this.style.color='white'" onmouseout="this.style.background='var(--amber-light)';this.style.color='#92400e'">↓ PDF</button>
+        <div class="info-icon-wrap" id="infoAlertas" style="margin-left:4px;margin-right:auto"
+             onclick="event.stopPropagation();toggleInfoPopover('infoAlertas')">
+          <i class="info-icon">i</i>
+          <div class="info-popover" style="width:300px">
+            <strong>Como ler os alertas</strong>
+            Cada alerta indica um evento em que a umidade relativa (UR) variou mais de
+            <b>10 pontos percentuais (p.p.)</b> dentro de um período de 24 horas num mesmo sensor.
+            <div style="margin-top:8px">
+              <strong>O que são pontos percentuais?</strong>
+              É a diferença direta entre dois valores de UR. Por exemplo: UR passou de
+              <b>22% para 94%</b> → variação de <b>72 p.p.</b> Não é uma variação relativa
+              (que seria 227%), mas sim a distância absoluta entre os dois valores.
+            </div>
+            <div style="margin-top:8px">
+              <strong>Por que isso importa?</strong>
+              Variações bruscas de umidade causam expansão e contração de materiais orgânicos
+              (papel, madeira, telas), podendo provocar danos mecânicos irreversíveis ao acervo,
+              mesmo que os valores absolutos de UR estejam dentro da faixa ideal.
+            </div>
+            <div style="margin-top:8px;color:var(--gray-400)">
+              Os alertas são ordenados por data mais recente.<br>
+              🎨 = evento ocorreu durante período expositivo.
+            </div>
+          </div>
+        </div>
+        <span class="alert-chevron" id="alertChev">▼</span>
+      </div>
+      <div class="alert-list-wrap" id="alertListWrap">
+        <div id="alertList"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Frequência de Alertas por Dia</div>
+      <div class="heatmap-scroll" id="heatmapWrap"></div>
+      <div class="hm-legend">
+        <span><span class="box hm-l0"></span> 0</span>
+        <span><span class="box hm-l1"></span> 1–2</span>
+        <span><span class="box hm-l2"></span> 3–5</span>
+        <span><span class="box hm-l3"></span> 6–10</span>
+        <span><span class="box hm-l4"></span> 11+</span>
+      </div>
+    </div>
+
+    <!-- Gráfico de umidade com marcadores de eventos -->
+    <div class="card" id="cardAlertasMarcadores" style="display:none">
+      <div class="card-header">
+        <span class="card-title" style="margin:0">Umidade ao Longo do Tempo — Eventos de Variação Brusca</span>
+        <div class="info-icon-wrap" id="infoAlertasMarcadores">
+          <i class="info-icon" onclick="toggleInfoPopover('infoAlertasMarcadores')">i</i>
+          <div class="info-popover" style="width:280px">
+            <strong>Como ler este gráfico</strong>
+            A linha mostra a evolução da umidade relativa no período.
+            Os <b style="color:#E30613">▲ triângulos vermelhos</b> marcam os momentos em que foi detectada
+            uma variação superior a 10 p.p. em 24h. Passe o mouse sobre um marcador para ver
+            os detalhes do evento — sensor, UR inicial, UR final e variação.
+          </div>
+        </div>
+      </div>
+      <div class="chart-note" style="margin-bottom:12px">
+        <b style="color:#36a2eb">━</b> Umidade Relativa média &nbsp;·&nbsp;
+        <b style="color:#E30613">▲</b> Variação &gt; 10 p.p. em 24h
+      </div>
+      <div class="chart-wrap chart-wrap-tall">
+        <canvas id="cAlertasMarcadores"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TAB: OCORRÊNCIAS ───────────────────────────────────── -->
+  <div class="tab-pane" id="tab-ocorrencias">
+    <div class="card">
+      <div class="card-header">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="card-title" style="margin:0">Ocorrências Registradas</span>
+          <div class="info-icon-wrap" id="infoOcorrencias">
+            <i class="info-icon" onclick="toggleInfoPopover('infoOcorrencias')">i</i>
+            <div class="info-popover" style="width:280px">
+              <strong>O que são ocorrências?</strong>
+              Registros de eventos que podem explicar desvios climáticos nos dados —
+              manutenções, falhas de equipamento, obras ou picos detectados automaticamente.
+              <div style="margin-top:8px">
+                Ocorrências são vinculadas a sensores e aparecem nos relatórios como
+                contexto para os dados fora do padrão.
+              </div>
+              <div style="margin-top:8px;color:var(--gray-400)">
+                <b style="color:#dc2626">⚡ automático</b> — detectado pelo sistema no upload.<br>
+                Demais tipos são inseridos manualmente pela equipe.
+              </div>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openOcorrenciaModal()">＋ Nova Ocorrência</button>
+      </div>
+
+      <!-- Filtros rápidos -->
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+                  padding:10px 0 14px;border-bottom:1px solid var(--border);margin-bottom:14px">
+        <span style="font-family:var(--mono);font-size:.68rem;color:var(--gray-400);letter-spacing:1px">FILTRAR</span>
+        <div class="seg-ctrl" id="segOcorrTipo">
+          <button class="seg-btn active" data-tipo="" onclick="selectSeg(this);filtrarOcorrencias()">Todos</button>
+          <button class="seg-btn" data-tipo="manutencao" onclick="selectSeg(this);filtrarOcorrencias()">Manutenção</button>
+          <button class="seg-btn" data-tipo="falha_equipamento" onclick="selectSeg(this);filtrarOcorrencias()">Falha</button>
+          <button class="seg-btn" data-tipo="obra" onclick="selectSeg(this);filtrarOcorrencias()">Obra</button>
+          <button class="seg-btn" data-tipo="pico_automatico" onclick="selectSeg(this);filtrarOcorrencias()">⚡ Automático</button>
+        </div>
+        <div class="seg-ctrl" id="segOcorrPredi">
+          <button class="seg-btn active" data-predio="" onclick="selectSeg(this);filtrarOcorrencias()">Todos os prédios</button>
+          <button class="seg-btn" data-predio="Lina" onclick="selectSeg(this);filtrarOcorrencias()">Lina</button>
+          <button class="seg-btn" data-predio="Pietro" onclick="selectSeg(this);filtrarOcorrencias()">Pietro</button>
+        </div>
+      </div>
+
+      <!-- Contador -->
+      <div id="ocorrContagemInfo" style="font-family:var(--mono);font-size:.72rem;
+           color:var(--gray-400);margin-bottom:10px;letter-spacing:.5px"></div>
+
+      <!-- Lista de ocorrências -->
+      <div id="ocorrListaWrap"></div>
+    </div>
+  </div>
+
+  <!-- TAB: RELATÓRIO ──────────────────────────────────── -->
+  <div class="tab-pane" id="tab-relatorio">
+    <div class="card">
+      <div class="card-title">Gerar Relatório para Comitê de Climatização</div>
+      
+      <div style="background:var(--blue-light);border-left:3px solid var(--blue);padding:10px 14px;border-radius:0 var(--radius) var(--radius) 0;margin-bottom:24px">
+        <p style="font-size:.84rem;color:#1e3a8a;margin-bottom:6px">
+          <strong>Período:</strong> O relatório usará as datas definidas nos filtros do topo da tela.
+        </p>
+        <p style="font-size:.8rem;color:#1e40af;font-family:var(--mono)">
+          ⚠ <strong>LIMITE DO GRÁFICO:</strong> A renderização suporta até 50.000 pontos contínuos. Períodos maiores que 1 ano terão seus gráficos de linha automaticamente amostrados para garantir a legibilidade.
+        </p>
+      </div>
+
+      <div class="rep-step">
+        <div class="rep-step-num">1</div>
+        <div class="rep-step-body">
+          <div class="rep-step-title">Padrão Normativo do Relatório</div>
+          <div class="rep-step-sub">Define quais faixas de conformidade serão exibidas e analisadas.</div>
+          
+          <div class="rep-padrao-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
+            <label class="rep-padrao-card rep-padrao-card--active" data-padrao="bizot" onclick="selectReportPadrao(this)">
+              <input type="radio" name="repPadrao" value="bizot" checked style="display:none">
+              <div class="rep-padrao-sigla">Bizot</div>
+              <div class="rep-padrao-range">15–25°C · 40–60% UR</div>
+              <div class="rep-padrao-desc">Referência internacional para acervos mistos</div>
+            </label>
+            <label class="rep-padrao-card" data-padrao="masp" onclick="selectReportPadrao(this)">
+              <input type="radio" name="repPadrao" value="masp" style="display:none">
+              <div class="rep-padrao-sigla">MASP</div>
+              <div class="rep-padrao-range">18–23°C · 45–55% UR</div>
+              <div class="rep-padrao-desc">Parâmetro interno de uso corrente</div>
+            </label>
+            <label class="rep-padrao-card" data-padrao="ibram" onclick="selectReportPadrao(this)">
+              <input type="radio" name="repPadrao" value="ibram" style="display:none">
+              <div class="rep-padrao-sigla">IBRAM</div>
+              <div class="rep-padrao-range">18–22°C · 50–60% UR</div>
+              <div class="rep-padrao-desc">Política Nacional de Museus</div>
+            </label>
+            <label class="rep-padrao-card" data-padrao="hibrido" onclick="selectReportPadrao(this)">
+              <input type="radio" name="repPadrao" value="hibrido" style="display:none">
+              <div class="rep-padrao-sigla" style="color:var(--blue)">HÍBRIDO</div>
+              <div class="rep-padrao-range">MASP + Bizot</div>
+              <div class="rep-padrao-desc">Aplica MASP no 1º Andar e Bizot no restante</div>
+            </label>
+            <label class="rep-padrao-card" data-padrao="custom" onclick="selectReportPadrao(this)">
+              <input type="radio" name="repPadrao" value="custom" style="display:none">
+              <div class="rep-padrao-sigla" style="font-size:.72rem;letter-spacing:1.5px">PERSONALIZADO</div>
+              <div class="rep-padrao-range">Faixas manuais</div>
+              <div class="rep-padrao-desc">Define limites individuais no Passo 3</div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- PASSO 2: Pontos de medição -->
+      <div class="rep-step">
+        <div class="rep-step-num">2</div>
+        <div class="rep-step-body">
+          <div class="rep-step-title">Pontos de Medição</div>
+          <div class="rep-step-sub">Selecione os espaços a serem incluídos no relatório.</div>
+          <div class="rep-sensor-grid" id="repSensores">
+            <span style="font-size:.8rem;color:var(--gray-300)">Carregando...</span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-ghost btn-sm" onclick="toggleAllSensors(true)">Todos</button>
+            <button class="btn btn-ghost btn-sm" onclick="toggleAllSensors(false)">Nenhum</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PASSO 3: Personalizado — só aparece quando selecionado -->
+      <div class="rep-step" id="repCustomStep" style="display:none">
+        <div class="rep-step-num">3</div>
+        <div class="rep-step-body">
+          <div class="rep-step-title">Faixas Personalizadas por Ponto</div>
+          <div class="rep-step-sub">Configure os limites individuais para cada sensor selecionado acima.</div>
+          <p id="repThreshHint" style="font-size:.8rem;color:var(--gray-300);margin-top:8px">Selecione pontos acima para configurar.</p>
+          <div class="tbl-wrap" style="margin-top:10px">
+            <table class="thresh-table" id="repThreshTable" style="display:none">
+              <thead>
+                <tr>
+                  <th>Ponto</th>
+                  <th>UR Mín %</th><th>UR Máx %</th>
+                  <th>T Mín °C</th><th>T Máx °C</th>
+                  <th>Equipamento (CA-XX)</th>
+                  <th>Notas / Observações</th>
+                </tr>
+              </thead>
+              <tbody id="repThreshTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    <!-- PASSO 4: Personalizar Conteúdo do Relatório -->
+
+      <div class="rep-step" id="repCustomContentStep">
+        <div class="rep-step-num">4</div>
+        <div class="rep-step-body">
+          <div class="rep-step-title">Personalizar Conteúdo e Gráficos</div>
+          <div class="rep-step-sub">Selecione as seções a incluir e ajuste os limites dos gráficos.</div>
+
+          <div class="fld" style="margin-bottom: 20px;">
+  <label style="font-size:.65rem;color:var(--gray-500)">Visibilidade do Relatório</label>
+  <div class="seg-ctrl" id="repVisibilidade">
+    <button class="seg-btn active" data-visibilidade="interno" onclick="selectSeg(this)">🔒 Uso Interno</button>
+    <button class="seg-btn" data-visibilidade="externo" onclick="selectSeg(this)">🌐 Uso Externo</button>
+  </div>
+  <p style="font-size:.72rem;color:var(--gray-400);margin-top:6px;line-height:1.5">
+    <strong>Externo</strong> oculta a descrição em texto livre de cada ocorrência (onde costumam entrar detalhes
+    operacionais internos, nomes de empresas/fornecedores e procedimentos técnicos) — mantém tipo, datas,
+    sensores afetados e responsável pelo registro. Use para emprestadores, seguradoras e outras partes externas.
+  </p>
+</div>
+
+          <div class="fld" style="margin-bottom: 20px;">
+  <label style="font-size:.65rem;color:var(--gray-500)">Idioma do Relatório / Report Language</label>
+  <div class="seg-ctrl" id="repLang">
+    <button class="seg-btn active" data-lang="pt" onclick="selectSeg(this)">🇧🇷 Português</button>
+    <button class="seg-btn" data-lang="en" onclick="selectSeg(this)">🇺🇸 English</button>
+  </div>
+</div>
+          
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+            <div style="padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--gray-50)">
+              <div style="font-family:var(--mono);font-size:.75rem;letter-spacing:1px;color:#8c8278;text-transform:uppercase;margin-bottom:12px;font-weight:700">Seções Principais</div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeCover" checked class="rep-content-check" style="accent-color:var(--red)"><span>Capa / Rosto</span></label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeInstructions" checked class="rep-content-check" style="accent-color:var(--red)"><span>Como Ler Este Relatório</span></label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeSummary" checked class="rep-content-check" style="accent-color:var(--red)"><span>Tabela Comparativa Geral</span></label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeGlobalTrend" checked class="rep-content-check" style="accent-color:var(--red)"><span>Tendência de Conformidade Comparativa (todos os sensores)</span></label>
+              </div>
+            </div>
+
+            <div style="padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--gray-50)">
+              <div style="font-family:var(--mono);font-size:.75rem;letter-spacing:1px;color:#8c8278;text-transform:uppercase;margin-bottom:12px;font-weight:700">Análise de Sensores</div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeSensors" checked class="rep-content-check" style="accent-color:var(--red)"><span>Páginas Individuais de Sensores</span></label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeCharts" checked class="rep-content-check" style="accent-color:var(--red)"><span>Gráficos de Série Temporal</span></label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeOccurrences" checked class="rep-content-check" style="accent-color:var(--red)"><span>Ocorrências e Notas</span></label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeMonthly" checked class="rep-content-check" style="accent-color:var(--red)"><span>Tabela de Evolução Mensal</span></label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" id="repIncludeDeviations" checked class="rep-content-check" style="accent-color:var(--red)"><span>Análise de Desvios (T e UR)</span></label>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:16px;padding:16px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--white);box-shadow:var(--shadow-sm)">
+            <div style="font-family:var(--mono);font-size:.75rem;letter-spacing:1px;color:#8c8278;text-transform:uppercase;margin-bottom:12px;font-weight:700">
+              Limites do Gráfico e Anotações Extras
+            </div>
+            
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--gray-100)">
+              <div class="fld">
+                <label style="font-size:.65rem;color:var(--gray-500)">Fixar Eixo Y — Temperatura (°C)</label>
+                <div style="display:flex;gap:10px;align-items:center">
+                  <input type="number" id="repChartYMinT" placeholder="Mín (Auto)" style="flex:1">
+                  <span style="color:var(--gray-300)">até</span>
+                  <input type="number" id="repChartYMaxT" placeholder="Máx (Auto)" style="flex:1">
+                </div>
+              </div>
+              <div class="fld">
+                <label style="font-size:.65rem;color:var(--gray-500)">Fixar Eixo Y — Umidade Relativa (%)</label>
+                <div style="display:flex;gap:10px;align-items:center">
+                  <input type="number" id="repChartYMinR" placeholder="Mín (Auto)" style="flex:1">
+                  <span style="color:var(--gray-300)">até</span>
+                  <input type="number" id="repChartYMaxR" placeholder="Máx (Auto)" style="flex:1">
+                </div>
+              </div>
+            </div>
+
+            <div class="fld" style="margin-bottom:0">
+              <label style="font-size:.65rem;color:var(--gray-500)">Adicionar Anotações Verticais no Gráfico (Ex: "Abertura de porta")</label>
+              <div id="repCustomMarkersWrap" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;margin-top:6px"></div>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="addCustomMarkerRow()">+ Adicionar Anotação Temporal</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    
+
+      <!-- PASSO 5: Mapeamento e Justificativa de Desvios -->
+      <div class="rep-step" id="repMappingStep">
+        <div class="rep-step-num">5</div>
+        <div class="rep-step-body">
+          <div class="rep-step-title">Mapear e Justificar Desvios</div>
+          <div class="rep-step-sub">Revise todos os desvios detectados e adicione justificativas antes de gerar o relatório final.</div>
+          
+          <div style="margin-top:16px">
+            <button class="btn btn-ghost btn-sm" onclick="loadDesviosPreview()" style="margin-bottom:12px">
+              🔄 Carregar Desvios
+            </button>
+          </div>
+          
+          <div id="desviosLoading" style="display:none;font-size:.8rem;color:var(--gray-300)">
+            ⏳ Carregando desvios...
+          </div>
+          
+          <div id="desviosEmpty" style="font-size:.8rem;color:var(--gray-300);padding:16px;text-align:center;background:var(--red-muted);border-radius:var(--radius-md);display:none">
+            ✓ Nenhum desvio detectado para o período e padrão selecionados.
+          </div>
+          
+          <!-- TOP 10 DESVIOS CARD -->
+          <div id="desviosTopCard" class="top-desvios-card" style="display:none">
+            <div class="card-title">📊 Análise Rápida — Top 10 Maiores Desvios</div>
+            
+            <div class="desvios-summary">
+              <div class="desvios-stat">
+                <div style="font-family:var(--mono);font-size:3rem;line-height:1">📋</div>
+                <div>
+                  <div class="desvios-stat-num" id="desvios-total">0</div>
+                  <div class="desvios-stat-label">Desvios Totais</div>
+                </div>
+              </div>
+              <div class="desvios-stat crit">
+                <div style="font-family:var(--mono);font-size:3rem;line-height:1">🔴</div>
+                <div>
+                  <div class="desvios-stat-num" id="desvios-criticos">0</div>
+                  <div class="desvios-stat-label">Críticos (15+ pts)</div>
+                </div>
+              </div>
+              <div class="desvios-stat warn">
+                <div style="font-family:var(--mono);font-size:3rem;line-height:1">🟡</div>
+                <div>
+                  <div class="desvios-stat-num" id="desvios-atencao">0</div>
+                  <div class="desvios-stat-label">Atenção (8-14 pts)</div>
+                </div>
+              </div>
+              <div class="desvios-stat light">
+                <div style="font-family:var(--mono);font-size:3rem;line-height:1">🟢</div>
+                <div>
+                  <div class="desvios-stat-num" id="desvios-leves">0</div>
+                  <div class="desvios-stat-label">Leves (&lt;8 pts)</div>
+                </div>
+              </div>
+            </div>
+            
+            <table class="top-desvios-table">
+              <thead>
+                <tr>
+                  <th style="width:30px">#</th>
+                  <th>Sensor</th>
+                  <th>Data/Hora</th>
+                  <th>Tipo</th>
+                  <th>Magnitude</th>
+                  <th style="width:50px">Status</th>
+                </tr>
+              </thead>
+              <tbody id="topDesviosTbody"></tbody>
+            </table>
+            
+            <div class="desvios-show-all">
+              <a href="#" onclick="toggleAllDesviosTable(); return false;">Ver todos os desvios (completo)</a>
+            </div>
+          </div>
+          
+          <div class="tbl-wrap" id="desviosTableWrap" style="margin-top:12px;display:none;max-height:400px;overflow-y:auto">
+            <table class="desvios-table">
+              <thead>
+                <tr>
+                  <th>Sensor</th>
+                  <th>Data Hora</th>
+                  <th>T (°C)</th>
+                  <th>UR (%)</th>
+                  <th>Tipo de Desvio</th>
+                  <th>Justificativa / Observação</th>
+                </tr>
+              </thead>
+              <tbody id="desviosTbody"></tbody>
+            </table>
+          </div>
+          
+          <div style="font-size:.75rem;color:var(--gray-400);margin-top:8px;font-style:italic">
+            💡 Dica: Clique no campo de justificativa para editar. As observações serão incluídas no relatório final.
+          </div>
+        </div>
+      </div>
+
+      <!-- Gerar -->
+      <div style="display:flex;align-items:center;gap:16px;margin-top:28px;padding-top:20px;border-top:1px solid var(--border)">
+        <button class="btn btn-primary" id="btnGerar" onclick="generateReport()" style="padding:11px 32px;font-size:.76rem">
+          ⇒ GERAR RELATÓRIO
+        </button>
+        <span class="filter-info">O relatório abrirá em nova aba — salve como PDF com Ctrl+P / Cmd+P.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: GERENCIAR ──────────────────────────────────── -->
+  <div class="tab-pane" id="tab-gerenciar">
+    <div class="gtabs-nav">
+      <button class="gtab-btn active" onclick="switchGTab('sensores',this)">Sensores</button>
+      <button class="gtab-btn" onclick="switchGTab('exposicoes_ed',this)">Exposições</button>
+      <button class="gtab-btn" onclick="switchGTab('importacoes_ed',this)">Importações</button>
+    </div>
+
+    <!-- SENSORES -->
+    <div class="gtab-pane active" id="gtab-sensores">
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          <span class="card-title" style="margin:0">Sensores Cadastrados</span>
+          <button class="btn btn-primary btn-sm" onclick="openSensorModal()">＋ Novo Sensor</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Nome</th><th>Prédio</th><th>Andar</th>
+                <th>Status</th><th>Expositivo?</th><th>Aliases</th><th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tSensoresAdmin"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXPOSIÇÕES -->
+    <div class="gtab-pane" id="gtab-exposicoes_ed">
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          <span class="card-title" style="margin:0">Exposições Cadastradas</span>
+          <button class="btn btn-primary btn-sm" onclick="openExpoModal()">＋ Nova Exposição</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Ano</th><th>Prédio</th><th>Nome</th><th>Início Preparação</th>
+                <th>Abertura</th><th>Fechamento</th><th>Desmontagem</th>
+                <th>Espaços</th><th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tExposAdmin"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- IMPORTAÇÕES -->
+    <div class="gtab-pane" id="gtab-importacoes_ed">
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          <span class="card-title" style="margin:0">Histórico de Importações</span>
+          <button class="btn btn-ghost btn-sm" onclick="recalcularPeriodoExpositivo()"
+            title="Recalcula o campo período expositivo de todas as medições cruzando com as exposições cadastradas">
+            ↺ Recalcular Período Expositivo
+          </button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Arquivo</th><th>Data Importação</th>
+                <th>Total</th><th>Importadas</th><th>Duplicadas</th>
+                <th>Período</th><th>Status</th><th>Obs.</th>
+              </tr>
+            </thead>
+            <tbody id="tImportAdmin"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+
+</div><!-- /shell -->
+
+<!-- FOOTER -->
+<footer class="site-footer">
+  <span>MASP — Museu de Arte de São Paulo · Sistema de Monitoramento de Climatização · v3.0</span>
+  <button onclick="location.reload()">↺ Recarregar</button>
+</footer>
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay" id="loader">
+  <div class="spinner-box">
+    <div class="spinner"></div>
+    <p>Processando dados...</p>
+  </div>
+</div>
+
+<!-- HEATMAP TOOLTIP -->
+<div class="hm-tt" id="hmTt"></div>
+
+<!-- REPORT OVERLAY removido — relatório gerado em nova janela via window.open -->
+
+<script src="/static/api.js?v={{ api_version }}"></script>
+<script src="/static/ui.js?v={{ api_version }}"></script>
+<script src="/static/charts.js?v={{ api_version }}"></script>
+<script src="/static/admin.js?v={{ api_version }}"></script>
+
+{% include 'modals.html' %}
+
+</body>
+</html>
+
