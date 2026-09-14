@@ -2010,16 +2010,23 @@ function _slugAndar(s) {
 }
 
 // Tenta casar o nome do arquivo (sem extensão) com um sensor já cadastrado —
-// ex.: "2andar.xlsx" -> "2º Andar". Sem match de alta confiança, não arrisca: deixa em branco.
-function guessSensorFromFilename(filename, sensorNames) {
+// ex.: "2andar.xlsx" -> "2º Andar". Compara contra o nome atual e os aliases (nomes
+// antigos) de cada sensor, porque um arquivo pode ter sido nomeado antes de uma renomeação
+// (ex.: sensores do Pietro renomeados para incluir o prédio no nome — ver contexto.md §4).
+// Sem match de alta confiança, não arrisca: deixa em branco.
+function guessSensorFromFilename(filename, pontos) {
   const base = _slugAndar(filename.replace(/\.[^.]+$/, ''));
   if (!base) return null;
   let exato = null, parcial = null;
-  for (const nome of sensorNames) {
-    const slug = _slugAndar(nome);
-    if (!slug) continue;
-    if (slug === base) { exato = nome; break; }
-    if (!parcial && (base.includes(slug) || slug.includes(base))) parcial = nome;
+  for (const p of pontos) {
+    const candidatos = [p.nome, ...(p.aliases || [])];
+    for (const nome of candidatos) {
+      const slug = _slugAndar(nome);
+      if (!slug) continue;
+      if (slug === base) { exato = p.nome; break; }
+      if (!parcial && (base.includes(slug) || slug.includes(base))) parcial = p.nome;
+    }
+    if (exato) break;
   }
   return exato || parcial;
 }
@@ -2065,7 +2072,7 @@ async function processXLSXFiles(xlsxFiles) {
     list.appendChild(row);
 
     try {
-      const guess = guessSensorFromFilename(file.name, sensorNames);
+      const guess = guessSensorFromFilename(file.name, meta.pontos || []);
       const sensor = await openXLSXSensorModal(file, sensorNames, guess);
       if (!sensor) {
         row.className = 'file-row';

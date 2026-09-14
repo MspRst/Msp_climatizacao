@@ -5,7 +5,7 @@
 > (dívida técnica catalogada — dead code, duplicações, recomendações). Este arquivo é sobre
 > **como o código está organizado hoje e por que**.
 
-Última atualização: 2026-09-11 · Branch: `main` · Último commit: `6a2956e` (nada do que segue
+Última atualização: 2026-09-14 · Branch: `main` · Último commit: `6a2956e` (nada do que segue
 foi commitado ainda — ver §3)
 
 ---
@@ -276,9 +276,16 @@ página de tendência em branco, cards melhor/pior desempenho — tudo isso est�
 | 2 | Regra do Híbrido triplicada | 2 cópias em SQL + 1 em JS, mesma lógica reescrita à mão 3x. Recomendação: coluna `sensores.padrao_hibrido`, editável na UI, igual `espaco_expositivo`. |
 | 3 | Faixas de conformidade hardcoded no JS | ~5 lugares repetem os números que já existem em `padroes_conformidade` no banco. |
 | 4 | `admin.js` com ~3440 linhas | CRUD + parsing de CSV/XLSX + análise de não-conformidades + geração inteira do relatório. Candidato a quebra em módulos. |
-| 5 | *Guess* de sensor no upload XLSX não usa aliases | Casa só contra `nome` atual (via `/api/meta`). Sensores renomeados (como os do Pietro) perdem o auto-preenchimento pra arquivos com o nome antigo — o alias ajuda a resolução no backend, mas o frontend não sabe disso na hora de sugerir. |
-| 6 | Backups soltos na raiz | `climatizacao_museu.backup-*.db` (2 arquivos desta sessão) — apagar quando não precisar mais. |
-| 7 | `exemplos_relatorios/`, `exemplo_graficos_pietro/`, `teste_relatorios_gerados/` fora do `.gitignore` | Contêm dados operacionais reais (nomes, ocorrências, planilha de sensor). Considerar ignorar se o repo for compartilhado. |
+### Resolvido em 2026-09-14
+- **Guess de sensor no XLSX usa aliases** — `/api/meta` agora anexa `aliases: [...]` a cada
+  ponto (backend, `meta()` em `app.py`); `guessSensorFromFilename()` (`admin.js`) compara o
+  slug do nome do arquivo contra nome atual **e** aliases de cada sensor, retornando sempre
+  o nome atual quando dá match. Call site em `processXLSXFiles()` passa `meta.pontos` em vez
+  da lista de nomes.
+- **Backups soltos apagados** — `climatizacao_museu.backup-*.db` removidos da raiz.
+- **`.gitignore` cobre dados operacionais reais** — `exemplos_relatorios/`,
+  `exemplo_graficos_pietro/`, `teste_relatorios_gerados/` adicionados (continham nomes,
+  ocorrências e planilha de sensor reais).
 
 ---
 

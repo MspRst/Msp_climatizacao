@@ -1045,6 +1045,17 @@ def meta():
         FROM sensores WHERE ativo = 1
         ORDER BY predio, andar NULLS LAST, nome
     """)
+    # Aliases (nomes antigos) de cada sensor — usados pelo frontend para sugerir o sensor
+    # certo ao importar um XLSX cujo nome de arquivo bate com um nome antigo (ex.: Pietro).
+    aliases_por_nome = {}
+    for r in query("""
+        SELECT s.nome, a.alias FROM sensores_aliases a
+        JOIN sensores s ON s.id = a.sensor_id WHERE s.ativo = 1
+    """):
+        aliases_por_nome.setdefault(r["nome"], []).append(r["alias"])
+    for p in pontos:
+        p["aliases"] = aliases_por_nome.get(p["nome"], [])
+
     anos = [r["ano"] for r in query(
         "SELECT DISTINCT strftime('%Y', data_hora) as ano FROM medicoes ORDER BY ano"
     )]

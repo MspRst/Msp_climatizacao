@@ -35,3 +35,8 @@ build/
 
 # Logs
 *.log
+
+# Dados operacionais reais (nomes, ocorrências, planilhas de sensor) — não versionar
+exemplos_relatorios/
+exemplo_graficos_pietro/
+teste_relatorios_gerados/
