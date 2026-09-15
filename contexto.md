@@ -257,8 +257,8 @@ que vem logo abaixo do canvas) — não no topo, onde atrapalhava a leitura das 
   global ficar em branco silenciosamente (sem erro no console, só sem dados). Se adicionar
   um novo gráfico global que dependa de dado por sensor, confirme que o campo está no
   `chartPayload`.
-- A regra "quem usa MASP vs. Bizot no padrão Híbrido" está reimplementada em 3 lugares
-  (`/api/metricas`, `/api/pontos` em SQL, e `admin.js` em JS) — ver `ANALISE-TECNICA.md` §2.3.
+- A regra "quem usa MASP vs. Bizot no padrão Híbrido" vem de `sensores.padrao_hibrido`
+  (`'masp'` | `'bizot'`), editável em Gerenciar → Sensores — ver §9 "Resolvido em 2026-09-15".
 
 ---
 
@@ -268,16 +268,27 @@ Ver `ANALISE-TECNICA.md` para a lista completa com prioridade. Resumo do que **a
 foi feito (o que já foi resolvido nesta sessão não está mais aqui — checkbox de evolução
 mensal, linha do térreo, cache-busting, exposições com espaço duplo/caractere errado,
 recalcular_periodo (era stub), espaco_expositivo, multi-prédio, `/api/sazonal` ausente,
-página de tendência em branco, cards melhor/pior desempenho, tabela `desvios` morta — tudo
-isso está corrigido):
+página de tendência em branco, cards melhor/pior desempenho, tabela `desvios` morta, regra
+do Híbrido triplicada — tudo isso está corrigido):
 
 | # | Item | Detalhe |
 |---|---|---|
-| 1 | Regra do Híbrido triplicada | 2 cópias em SQL + 1 em JS, mesma lógica reescrita à mão 3x. Recomendação: coluna `sensores.padrao_hibrido`, editável na UI, igual `espaco_expositivo`. |
-| 2 | Faixas de conformidade hardcoded no JS | ~5 lugares repetem os números que já existem em `padroes_conformidade` no banco. |
-| 3 | `admin.js` com ~3440 linhas | CRUD + parsing de CSV/XLSX + análise de não-conformidades + geração inteira do relatório. Candidato a quebra em módulos. |
+| 1 | Faixas de conformidade hardcoded no JS | ~5 lugares repetem os números que já existem em `padroes_conformidade` no banco. |
+| 2 | `admin.js` com ~3440 linhas | CRUD + parsing de CSV/XLSX + análise de não-conformidades + geração inteira do relatório. Candidato a quebra em módulos. |
 
 ### Resolvido em 2026-09-15
+- **Regra do padrão Híbrido centralizada** — nova coluna `sensores.padrao_hibrido`
+  (`'masp'` | `'bizot'`, default `'bizot'`), editável em Gerenciar → Sensores (mesmo padrão
+  de `espaco_expositivo`). Substituiu as 3 reimplementações da regra "só 1º Andar
+  Frente/Fundo usa MASP": o `CASE WHEN` por `LIKE` em `/api/metricas` e `/api/pontos`
+  (`app.py`) virou `WHEN s.padrao_hibrido = 'masp'`, e o `isMaspSensor` por regex de nome em
+  `admin.js` (geração do relatório) virou leitura de `padrao_hibrido` via `/api/meta`
+  (`generateReport()` monta um mapa nome→padrão, `openReportWindow()` usa `PADROES_NORMA.masp`/
+  `.bizot` em vez de duplicar os números 18–23/45–55 e 15–25/40–60 outra vez). Migração faz
+  backfill automático (uma vez, dentro do próprio `try` do `ALTER TABLE ADD COLUMN`) marcando
+  `'masp'` só nos sensores que já bateriam com a regra antiga — comportamento observável não
+  muda. Testado manualmente: `/api/meta`, `/api/metricas`, `/api/pontos` e o CRUD
+  (`/api/admin/sensores` GET/PUT) com o servidor de dev rodando.
 - **Tabela `desvios` + `/api/desvios` removidos** — feature morta (ANALISE-TECNICA §2.2):
   tabela sempre tinha 0 linhas, as funções que gravariam nela (`desvios.py`) nunca eram
   chamadas, e nenhuma tela chamava o endpoint (só `/api/desvios-preview`, que é

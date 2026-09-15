@@ -67,25 +67,24 @@ sobre `medicoes`).
 removidos de `app.py`, e a tabela `desvios` (0 linhas, confirmado antes do drop) foi
 dropada do `climatizacao_museu.db`.
 
-### 2.3 — Regra do padrão Híbrido duplicada em 3 lugares
+### 2.3 — Regra do padrão Híbrido duplicada em 3 lugares — ✅ resolvido em 2026-09-15
 
-"Quais sensores usam MASP vs. Bizot" está reimplementada, à mão, em:
+"Quais sensores usam MASP vs. Bizot" estava reimplementada, à mão, em:
 
 1. `app.py` → `/api/metricas` (SQL, `LIKE '%1%andar%frente%'...`)
 2. `app.py` → `/api/pontos` (mesmo SQL, copiado)
 3. `static/admin.js` → geração do relatório (`isMaspSensor`, mesma regra em JS)
 
-Isso já causou um bug real nesta sessão: quando a regra mudou (de "todo 1º andar" para
+Isso já tinha causado um bug real: quando a regra mudou (de "todo 1º andar" para
 "só Frente/Fundo"), foi preciso lembrar de editar os 3 lugares — e é fácil esquecer um.
-Com o Pietro entrando (5 andares novos, possivelmente com regra própria), esse risco
-cresce.
 
-**Recomendação:** criar uma coluna `sensores.padrao_hibrido` (`'masp'` | `'bizot'`),
-editável na UI — igual ao que já fiz para `espaco_expositivo` — e trocar as 3
-implementações por uma simples leitura dessa coluna. Não fiz essa mudança agora porque
-não é bloqueante: sob a regra atual, qualquer sensor novo do Pietro cai automaticamente
-em Bizot (o "senão" da regra), que é um padrão razoável até vocês decidirem o contrário
-por andar.
+**Resolvido**: nova coluna `sensores.padrao_hibrido` (`'masp'` | `'bizot'`, default
+`'bizot'`), editável na UI igual `espaco_expositivo`. As 3 implementações viraram uma
+simples leitura da coluna (`WHEN s.padrao_hibrido = 'masp'` no SQL; `padraoHibrido ===
+'masp'` no JS, lido de `/api/meta`). Migração faz backfill automático (uma vez, dentro do
+`try` do `ALTER TABLE ADD COLUMN`) marcando `'masp'` só nos 2 sensores que já bateriam com
+a regra antiga (1º andar Frente/Fundo) — comportamento observável não mudou, confirmado
+comparando `/api/metricas` e `/api/pontos` antes/depois no servidor de dev.
 
 ### 2.4 — Faixas de conformidade (18–22°C, 45–55% etc.) hardcoded em ~5 lugares do JS
 
@@ -130,6 +129,6 @@ automatizados para validar).
 |---|---|
 | Alta (destrutivo, precisa de OK seu) | Dropar `medicoes_nova`, `dados_diarios`, `dados_mensais`, `pontos_de_medicao` |
 | ~~Média~~ | ~~Remover ou reativar a trilha morta de `desvios`~~ — feito em 2026-09-15 |
-| Média | Centralizar regra Híbrido (`padrao_hibrido` por sensor) |
+| ~~Média~~ | ~~Centralizar regra Híbrido (`padrao_hibrido` por sensor)~~ — feito em 2026-09-15 |
 | Média | Centralizar faixas de conformidade (ler do backend, não hardcode) |
 | Baixa | Quebrar `admin.js` em módulos menores |

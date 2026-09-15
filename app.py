@@ -284,7 +284,23 @@ def _run_migrations(con):
         try:
             con.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {tipo}")
         except Exception:
-            pass  
+            pass
+
+    # "Quais sensores usam MASP vs. Bizot" no padrão Híbrido era reimplementado, à mão,
+    # em 3 lugares (2x SQL, 1x JS) via regex sobre o nome do sensor — fácil de esquecer
+    # um dos três ao mudar a regra. Agora é uma coluna, editável na UI (igual
+    # espaco_expositivo). O ADD COLUMN só sucede na primeira vez; o backfill abaixo roda
+    # só nesse momento, reproduzindo a regra antiga (só "1º Andar Frente/Fundo" = MASP)
+    # para não mudar o comportamento observável do relatório nesta migração.
+    try:
+        con.execute("ALTER TABLE sensores ADD COLUMN padrao_hibrido TEXT DEFAULT 'bizot'")
+        con.execute("""
+            UPDATE sensores SET padrao_hibrido = 'masp'
+            WHERE LOWER(nome) LIKE '%1%andar%frente%' OR LOWER(nome) LIKE '%primeiro%andar%frente%'
+               OR LOWER(nome) LIKE '%1%andar%fundo%'   OR LOWER(nome) LIKE '%primeiro%andar%fundo%'
+        """)
+    except Exception:
+        pass
 
     # SOLUÇÃO DEFINITIVA: Tabela corrigida (Executa uma única vez no startup)
     try:
@@ -454,11 +470,12 @@ def metricas():
             ROUND(100.0 * SUM(m.conf_temp_masp)         / COUNT(*), 1) as conf_temp_masp,
             ROUND(100.0 * SUM(m.conf_umid_masp)         / COUNT(*), 1) as conf_ur_masp,
             ROUND(100.0 * SUM(m.conf_total_masp)        / COUNT(*), 1) as conf_masp,
-            /* Cálculo da conformidade Híbrida Global */
+            /* Cálculo da conformidade Híbrida Global — qual sensor usa MASP vs. Bizot
+               vem de sensores.padrao_hibrido, editável em Gerenciar → Sensores */
             ROUND(100.0 * SUM(
-                CASE 
-                    WHEN (LOWER(s.nome) LIKE '%1%andar%frente%' OR LOWER(s.nome) LIKE '%primeiro%andar%frente%' OR LOWER(s.nome) LIKE '%1%andar%fundo%' OR LOWER(s.nome) LIKE '%primeiro%andar%fundo%') THEN m.conf_total_masp 
-                    ELSE m.conf_total_bizot 
+                CASE
+                    WHEN s.padrao_hibrido = 'masp' THEN m.conf_total_masp
+                    ELSE m.conf_total_bizot
                 END
             ) / COUNT(*), 1) as conf_hibrido
         FROM medicoes m
@@ -486,11 +503,12 @@ def pontos():
             ROUND(100.0 * SUM(m.conforme_total) / COUNT(*), 1) as conf_total_ibram,
             ROUND(100.0 * SUM(m.conf_total_masp) / COUNT(*), 1) as conf_total_masp,
             ROUND(100.0 * SUM(m.conf_total_bizot) / COUNT(*), 1) as conf_total_bizot,
-            /* Cálculo dinâmico do Híbrido: apenas 1º Andar Frente e 1º Andar Fundo usam MASP */
+            /* Cálculo dinâmico do Híbrido — vem de sensores.padrao_hibrido, editável em
+               Gerenciar → Sensores */
             ROUND(100.0 * SUM(
-                CASE 
-                    WHEN (LOWER(s.nome) LIKE '%1%andar%frente%' OR LOWER(s.nome) LIKE '%primeiro%andar%frente%' OR LOWER(s.nome) LIKE '%1%andar%fundo%' OR LOWER(s.nome) LIKE '%primeiro%andar%fundo%') THEN m.conf_total_masp 
-                    ELSE m.conf_total_bizot 
+                CASE
+                    WHEN s.padrao_hibrido = 'masp' THEN m.conf_total_masp
+                    ELSE m.conf_total_bizot
                 END
             ) / COUNT(*), 1) as conf_total_hibrido
         FROM medicoes m
@@ -980,7 +998,8 @@ def desvios_preview():
 @cached_endpoint
 def meta():
     pontos = query("""
-        SELECT nome, COALESCE(andar, 'Sem andar') as andar, COALESCE(predio, 'Lina') as predio
+        SELECT nome, COALESCE(andar, 'Sem andar') as andar, COALESCE(predio, 'Lina') as predio,
+               COALESCE(padrao_hibrido, 'bizot') as padrao_hibrido
         FROM sensores WHERE ativo = 1
         ORDER BY predio, andar NULLS LAST, nome
     """)
@@ -1879,9 +1898,10 @@ def admin_sensores_create():
     con = get_db()
     try:
         con.execute(
-            "INSERT INTO sensores (nome, localizacao, andar, descricao, ativo, data_instalacao, predio, espaco_expositivo) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO sensores (nome, localizacao, andar, descricao, ativo, data_instalacao, predio, espaco_expositivo, padrao_hibrido) VALUES (?,?,?,?,?,?,?,?,?)",
             (d["nome"], d.get("localizacao"), d.get("andar"), d.get("descricao"),
-             d.get("ativo", 1), d.get("data_instalacao"), predio, d.get("espaco_expositivo", 1))
+             d.get("ativo", 1), d.get("data_instalacao"), predio, d.get("espaco_expositivo", 1),
+             d.get("padrao_hibrido", "bizot"))
         )
         new_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
         con.commit()
@@ -1902,9 +1922,10 @@ def admin_sensores_update(sid):
     con = get_db()
     try:
         con.execute(
-            "UPDATE sensores SET nome=?, localizacao=?, andar=?, descricao=?, ativo=?, data_instalacao=?, predio=?, espaco_expositivo=? WHERE id=?",
+            "UPDATE sensores SET nome=?, localizacao=?, andar=?, descricao=?, ativo=?, data_instalacao=?, predio=?, espaco_expositivo=?, padrao_hibrido=? WHERE id=?",
             (d["nome"], d.get("localizacao"), d.get("andar"), d.get("descricao"),
-             d.get("ativo", 1), d.get("data_instalacao"), predio, d.get("espaco_expositivo", 1), sid)
+             d.get("ativo", 1), d.get("data_instalacao"), predio, d.get("espaco_expositivo", 1),
+             d.get("padrao_hibrido", "bizot"), sid)
         )
         con.commit()
         return jsonify({"status": "ok"})

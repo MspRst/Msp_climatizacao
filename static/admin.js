@@ -49,7 +49,7 @@ const PADROES_NORMA = {
   ibram:   { urMin: 50, urMax: 60, tMin: 18, tMax: 22, label: 'IBRAM',   desc: '18–22°C · 50–60% UR' },
   masp:    { urMin: 45, urMax: 55, tMin: 18, tMax: 23, label: 'MASP',    desc: '18–23°C · 45–55% UR' },
   bizot:   { urMin: 40, urMax: 60, tMin: 15, tMax: 25, label: 'Bizot',   desc: '15–25°C · 40–60% UR' },
-  hibrido: { label: 'Híbrido (MASP + Bizot)', desc: '1º Andar Frente/Fundo: MASP · Demais sensores: Bizot' },
+  hibrido: { label: 'Híbrido (MASP + Bizot)', desc: 'MASP ou Bizot por sensor — configurável em Gerenciar → Sensores' },
   custom:  { label: 'Personalizado', desc: 'Faixas por ponto' },
 };
 
@@ -428,9 +428,13 @@ async function generateReport() {
     // ocorrência registrada com predio='Ambos'). Sem isso, uma ocorrência do Lina
     // marcada "afeta prédio todo" vazava para relatórios do Pietro, e vice-versa.
     let predioPorSensor = {};
+    let padraoHibridoPorSensor = {};
     try {
       const meta = await API.get('meta');
       predioPorSensor = Object.fromEntries((meta.pontos || []).map(p => [p.nome, p.predio]));
+      // Fonte única da regra do padrão Híbrido (sensores.padrao_hibrido) — evita
+      // reimplementar "quais sensores usam MASP" por regex de nome aqui.
+      padraoHibridoPorSensor = Object.fromEntries((meta.pontos || []).map(p => [p.nome, p.padrao_hibrido || 'bizot']));
     } catch (_) {}
 
     let terreoDados = [];
@@ -454,7 +458,7 @@ async function generateReport() {
         (o.predio === sensorPredio || o.predio === 'Ambos') &&
         (o.afeta_predio_todo || o.sensores?.some(s => s.nome === sensor))
       );
-      allData.push({ sensor, serie, stats: pontosRes[0] || {}, thresh: getReportThresholds(sensor), ocorrencias: sensorOcorrs, mensalAPI: mensalRes });
+      allData.push({ sensor, serie, stats: pontosRes[0] || {}, thresh: getReportThresholds(sensor), ocorrencias: sensorOcorrs, mensalAPI: mensalRes, padraoHibrido: padraoHibridoPorSensor[sensor] || 'bizot' });
     }
 
     if (anyTruncated) showToast('⚠ ${tx.period} muito longo: gráficos mostram apenas os primeiros 50.000 pontos.', 'warn', 10000);
@@ -562,18 +566,13 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
 
   const temTerreo = terreoDados.length > 0;
 
-  const sensorsData = allData.map(({ sensor, serie, stats, thresh, ocorrencias, mensalAPI }) => {
-    
-    // LÓGICA DO PADRÃO HÍBRIDO
+  const sensorsData = allData.map(({ sensor, serie, stats, thresh, ocorrencias, mensalAPI, padraoHibrido }) => {
+
+    // LÓGICA DO PADRÃO HÍBRIDO — qual sensor usa MASP vs. Bizot vem de sensores.padrao_hibrido
+    // (editável em Gerenciar → Sensores), não mais de um regex sobre o nome do sensor.
     let p = isCustom ? thresh : norma;
     if (padrao === 'hibrido') {
-      const sensorNameNormalized = sensor.toLowerCase().replace(/º/g, 'o').replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
-      const isMaspSensor = sensorNameNormalized.includes('1o andar frente') || sensorNameNormalized.includes('primeiro andar frente') || sensorNameNormalized.includes('1o andar fundo') || sensorNameNormalized.includes('primeiro andar fundo');
-      if (isMaspSensor) {
-        p = { tMin: 18, tMax: 23, urMin: 45, urMax: 55, label: 'MASP' };
-      } else {
-        p = { tMin: 15, tMax: 25, urMin: 40, urMax: 60, label: 'Bizot' };
-      }
+      p = padraoHibrido === 'masp' ? PADROES_NORMA.masp : PADROES_NORMA.bizot;
     }
     const effectiveThresh = { ...p, equipment: thresh.equipment, notas: thresh.notas };
 
@@ -2424,6 +2423,7 @@ async function loadSensoresAdmin() {
       <td>${s.andar || '–'}</td>
       <td><span class="badge ${s.ativo ? 'badge-green' : 'badge-gray'}">${s.ativo ? 'Ativo' : 'Inativo'}</span></td>
       <td><span class="badge ${(s.espaco_expositivo ?? 1) ? 'badge-green' : 'badge-gray'}">${(s.espaco_expositivo ?? 1) ? 'Sim' : 'Não'}</span></td>
+      <td><span class="badge ${(s.padrao_hibrido || 'bizot') === 'masp' ? 'badge-green' : 'badge-gray'}">${(s.padrao_hibrido || 'bizot') === 'masp' ? 'MASP' : 'Bizot'}</span></td>
       <td>${aliasChips}</td>
       <td style="white-space:nowrap">
         <button class="action-btn" onclick='openSensorModal(${JSON.stringify(s)})'>Editar</button>
@@ -2446,6 +2446,7 @@ function openSensorModal(sensor) {
   document.getElementById('sDescricao').value      = editing ? (sensor.descricao || '') : '';
   document.getElementById('sAtivo').value          = editing ? String(sensor.ativo) : '1';
   document.getElementById('sEspacoExpositivo').value = editing ? String(sensor.espaco_expositivo ?? 1) : '1';
+  document.getElementById('sPadraoHibrido').value  = editing ? (sensor.padrao_hibrido || 'bizot') : 'bizot';
   document.getElementById('sensorModal').classList.remove('hidden');
   setTimeout(() => document.getElementById('sNome').focus(), 50);
 }
@@ -2468,6 +2469,7 @@ async function saveSensor() {
     descricao:        document.getElementById('sDescricao').value.trim() || null,
     ativo:            parseInt(document.getElementById('sAtivo').value),
     espaco_expositivo: parseInt(document.getElementById('sEspacoExpositivo').value),
+    padrao_hibrido:    document.getElementById('sPadraoHibrido').value,
   };
 
   try {
