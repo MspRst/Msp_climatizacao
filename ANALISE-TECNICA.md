@@ -31,7 +31,7 @@ Data: 2026-09-11 · Banco analisado: `climatizacao_museu.db` (2.901.038 mediçõ
 
 ### 2.1 — Tabelas mortas no banco (⚠️ ação recomendada, não executada)
 
-Nenhum destas é referenciada por `app.py`, `conformidade.py`, `desvios.py`,
+Nenhum destas é referenciada por `app.py`, `conformidade.py`,
 `import_dados.py` ou `atualizar_expos.py` — confirmado por busca no código inteiro:
 
 | Tabela | Linhas | O que parece ser |
@@ -46,7 +46,7 @@ algo perto de ~500-600 MB (a maior parte é `medicoes_nova`). **Não fiz isso ai
 é uma operação destrutiva em dados reais e prefiro sua confirmação explícita antes,
 mesmo com backup feito.
 
-### 2.2 — Feature morta: `desvios` (tabela) + `/api/desvios` (endpoint)
+### 2.2 — Feature morta: `desvios` (tabela) + `/api/desvios` (endpoint) — ✅ resolvido em 2026-09-15
 
 - A tabela `desvios` tem **0 linhas**.
 - As únicas funções que gravariam nela (`calcular_desvios_serie` + `armazenar_desvios`,
@@ -60,9 +60,12 @@ mesmo com backup feito.
 Isso é uma funcionalidade que foi desenhada (tem até `associar_desvios_a_ocorrencias`
 para juntar desvios a manutenções) mas nunca foi ligada ao resto do sistema — o
 relatório de desvios real usa outro caminho (`/api/desvios-preview`, cálculo direto
-sobre `medicoes`). Recomendo remover `/api/desvios` + as 3 funções de escrita em
-`desvios.py` (mantendo só o que `-preview` usa), a menos que haja planos de retomar
-essa trilha.
+sobre `medicoes`).
+
+**Resolvido**: `desvios.py` foi deletado por inteiro (nada mais o importava — nem a
+`-preview`, que é autocontida em `app.py`), a rota `/api/desvios` e seu import foram
+removidos de `app.py`, e a tabela `desvios` (0 linhas, confirmado antes do drop) foi
+dropada do `climatizacao_museu.db`.
 
 ### 2.3 — Regra do padrão Híbrido duplicada em 3 lugares
 
@@ -126,7 +129,7 @@ automatizados para validar).
 | Prioridade | Item |
 |---|---|
 | Alta (destrutivo, precisa de OK seu) | Dropar `medicoes_nova`, `dados_diarios`, `dados_mensais`, `pontos_de_medicao` |
-| Média | Remover ou reativar a trilha morta de `desvios` |
+| ~~Média~~ | ~~Remover ou reativar a trilha morta de `desvios`~~ — feito em 2026-09-15 |
 | Média | Centralizar regra Híbrido (`padrao_hibrido` por sensor) |
 | Média | Centralizar faixas de conformidade (ler do backend, não hardcode) |
 | Baixa | Quebrar `admin.js` em módulos menores |

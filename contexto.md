@@ -5,7 +5,7 @@
 > (dívida técnica catalogada — dead code, duplicações, recomendações). Este arquivo é sobre
 > **como o código está organizado hoje e por que**.
 
-Última atualização: 2026-09-14 · Branch: `main` — ver §3 para o histórico de commits recente
+Última atualização: 2026-09-15 · Branch: `main` — ver §3 para o histórico de commits recente
 
 ---
 
@@ -29,7 +29,6 @@ Navegador (SPA sem framework)
    │  fetch /api/*
    ▼
 Flask (app.py, ~2420 linhas)  ──►  conformidade.py   (motor de conformidade)
-   │                          ──►  desvios.py        (relatório de desvios — parcialmente morto, ver ANALISE-TECNICA §2.2)
    │  cache em memória (TTL 300s por padrão, por-endpoint via @cached_endpoint(ttl=...))
    ▼
 SQLite (climatizacao_museu.db, ~700 MB, 2,9M medições, 27 sensores, 101 exposições)
@@ -45,7 +44,6 @@ Ver §6 para as armadilhas disso.
 |---|---|---|
 | `app.py` | ~2420 | Servidor Flask: rotas `/api/*`, migrações de schema, cache, upload/ingestão (JSON e XLSX) |
 | `conformidade.py` | ~285 | Fonte única de verdade do cálculo de conformidade e ponto de orvalho (Magnus-Tetens). Padrões lidos do BD (tabela `padroes_conformidade`) |
-| `desvios.py` | ~302 | Cálculo de desvios — **parcialmente morto**, ver `ANALISE-TECNICA.md` §2.2 |
 | `import_dados.py` | ~416 | CLI de importação (BD SQLite externo, JSON, XLSX genérico, exposições) — **não** entende o formato XLSX do Pietro, só o dashboard entende (ver §5) |
 | `atualizar_expos.py` | — | Script de atualização de exposições a partir do CSV |
 | `templates/index.html` | ~960 | Casca da SPA — abas, filtros, canvases, formulário do relatório |
@@ -270,14 +268,23 @@ Ver `ANALISE-TECNICA.md` para a lista completa com prioridade. Resumo do que **a
 foi feito (o que já foi resolvido nesta sessão não está mais aqui — checkbox de evolução
 mensal, linha do térreo, cache-busting, exposições com espaço duplo/caractere errado,
 recalcular_periodo (era stub), espaco_expositivo, multi-prédio, `/api/sazonal` ausente,
-página de tendência em branco, cards melhor/pior desempenho — tudo isso está corrigido):
+página de tendência em branco, cards melhor/pior desempenho, tabela `desvios` morta — tudo
+isso está corrigido):
 
 | # | Item | Detalhe |
 |---|---|---|
-| 1 | Tabela `desvios` + `/api/desvios` mortos | Tabela sempre vazia, função que escreveria nela nunca é chamada, nenhuma tela chama o endpoint. `/api/desvios-preview` (usado de verdade) é outro caminho, não depende disso. |
-| 2 | Regra do Híbrido triplicada | 2 cópias em SQL + 1 em JS, mesma lógica reescrita à mão 3x. Recomendação: coluna `sensores.padrao_hibrido`, editável na UI, igual `espaco_expositivo`. |
-| 3 | Faixas de conformidade hardcoded no JS | ~5 lugares repetem os números que já existem em `padroes_conformidade` no banco. |
-| 4 | `admin.js` com ~3440 linhas | CRUD + parsing de CSV/XLSX + análise de não-conformidades + geração inteira do relatório. Candidato a quebra em módulos. |
+| 1 | Regra do Híbrido triplicada | 2 cópias em SQL + 1 em JS, mesma lógica reescrita à mão 3x. Recomendação: coluna `sensores.padrao_hibrido`, editável na UI, igual `espaco_expositivo`. |
+| 2 | Faixas de conformidade hardcoded no JS | ~5 lugares repetem os números que já existem em `padroes_conformidade` no banco. |
+| 3 | `admin.js` com ~3440 linhas | CRUD + parsing de CSV/XLSX + análise de não-conformidades + geração inteira do relatório. Candidato a quebra em módulos. |
+
+### Resolvido em 2026-09-15
+- **Tabela `desvios` + `/api/desvios` removidos** — feature morta (ANALISE-TECNICA §2.2):
+  tabela sempre tinha 0 linhas, as funções que gravariam nela (`desvios.py`) nunca eram
+  chamadas, e nenhuma tela chamava o endpoint (só `/api/desvios-preview`, que é
+  autocontido em `app.py` e não depende de nada disso). Deletei `desvios.py` inteiro, removi
+  a rota `/api/desvios` e o import correspondente em `app.py`, e dropei a tabela `desvios`
+  (0 linhas, confirmado antes do drop) do `climatizacao_museu.db`. Nada mais referenciava o
+  módulo ou o endpoint (confirmado por busca em todo o repo).
 ### Resolvido em 2026-09-14
 - **Guess de sensor no XLSX usa aliases** — `/api/meta` agora anexa `aliases: [...]` a cada
   ponto (backend, `meta()` em `app.py`); `guessSensorFromFilename()` (`admin.js`) compara o
@@ -368,4 +375,4 @@ Variáveis: `DB_PATH`, `ACCESS_TOKEN`, `FLASK_ENV`, `PORT`. Produção via Gunic
 | Mexer no relatório (conteúdo, seções, interno/externo) | `admin.js` → `openReportWindow()`, `getReportContentSettings()`; checkboxes em `templates/index.html` |
 | Mexer em filtros | `ui.js` → `populateFilters()`; `api.js` → `getFilters()`; `app.py` → `build_filtros()` |
 | Entender conformidade | `conformidade.py` |
-| Entender desvios | `desvios.py` — mas ver §9.1 antes, parte é código morto |
+| Entender desvios | `/api/desvios-preview` em `app.py` (cálculo on-the-fly, é o único caminho real — `desvios.py`/`/api/desvios` foram removidos por serem código morto) |

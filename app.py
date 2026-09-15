@@ -14,7 +14,6 @@ from datetime import datetime as _dt, date as _date
 from flask import Flask, jsonify, send_file, request, abort, render_template
 from functools import wraps
 from conformidade import calcular_conformidade, calcular_ponto_orvalho
-from desvios import calcular_desvios_serie, gerar_relatorio_desvios_sensor
 
 # ── CACHE SIMPLES EM MEMÓRIA ──────────────────────────────
 # Evita reprocessar queries pesadas enquanto os dados não mudam.
@@ -856,66 +855,6 @@ def calcular_alertas():
         LIMIT 500
     """
     return jsonify(query(sql, params))
-
-
-# ── API: DESVIOS DE CONFORMIDADE ──────────────────────────
-@app.route("/api/desvios")
-@optional_auth
-@cached_endpoint
-def desvios_api():
-    """
-    Retorna estatísticas de desvios de conformidade para um sensor.
-    
-    Parâmetros:
-      ?ponto=<nome>      (obrigatório)
-      ?data_ini=YYYY-MM-DD
-      ?data_fim=YYYY-MM-DD
-      ?padrao=1|2|3      (1=IBRAM, 2=MASP, 3=BIZOT. padrão: 2)
-    
-    Retorno:
-    {
-        'total_medicoes': int,
-        'total_desvios': int,
-        'pct_desvios': float,
-        'pct_acima': float,
-        'pct_abaixo': float,
-        'pct_conforme': float,
-        'temp_acima_count': int,
-        'temp_abaixo_count': int,
-        'umid_acima_count': int,
-        'umid_abaixo_count': int,
-        'desvios_lista': [{...}]  # até 50 desvios com justificativas
-    }
-    """
-    ponto = request.args.get("ponto", "").strip()
-    if not ponto:
-        return jsonify({"erro": "ponto é obrigatório"}), 400
-    
-    data_ini = request.args.get("data_ini", "")
-    data_fim = request.args.get("data_fim", "")
-    padrao = int(request.args.get("padrao", "2"))
-    
-    con = sqlite3.connect(DB_PATH)
-    con.row_factory = sqlite3.Row
-    
-    try:
-        # Resolve sensor_id a partir do nome
-        sensor = con.execute(
-            "SELECT id FROM sensores WHERE nome = ?",
-            (ponto,)
-        ).fetchone()
-        
-        if not sensor:
-            return jsonify({"erro": f"Sensor '{ponto}' não encontrado"}), 404
-        
-        sensor_id = sensor['id']
-        
-        # Chama função de cálculo
-        resultado = gerar_relatorio_desvios_sensor(sensor_id, data_ini, data_fim, padrao)
-        return jsonify(resultado)
-    
-    finally:
-        con.close()
 
 
 # ── API: DESVIOS PREVIEW (para tabela interativa) ─────────────────────────
