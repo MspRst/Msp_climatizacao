@@ -277,6 +277,13 @@ do Híbrido triplicada — tudo isso está corrigido):
 | 2 | `admin.js` com ~3440 linhas | CRUD + parsing de CSV/XLSX + análise de não-conformidades + geração inteira do relatório. Candidato a quebra em módulos. |
 
 ### Resolvido em 2026-09-15
+- **Bug real: legenda do MASP no gráfico Mensal mostrava a faixa errada de temperatura** —
+  `normaFaixas.masp.tLabel` (`charts.js`, gráfico "Evolução Mensal") dizia **"T: 18–22°C"**
+  (a faixa do IBRAM) em vez de **"T: 18–23°C"** (MASP: 18–23°C · 45–55% UR, confirmado
+  contra `padroes_conformidade` no banco). Os cálculos de conformidade em si estavam certos
+  (usam `conf_total_masp`, já calculado certo no backend) — só a legenda do gráfico exibia
+  o número errado. Encontrado ao auditar as cópias hardcoded das faixas de conformidade no
+  JS (`ANALISE-TECNICA.md` §2.4) — nenhuma outra cópia tinha esse tipo de mixup.
 - **Regra do padrão Híbrido centralizada** — nova coluna `sensores.padrao_hibrido`
   (`'masp'` | `'bizot'`, default `'bizot'`), editável em Gerenciar → Sensores (mesmo padrão
   de `espaco_expositivo`). Substituiu as 3 reimplementações da regra "só 1º Andar

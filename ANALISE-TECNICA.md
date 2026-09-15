@@ -98,6 +98,12 @@ repete os mesmos números em:
 - `static/charts.js:1174` (faixas do gráfico Sazonal — que eu segui ao implementar o
   endpoint novo, por consistência com o que já existia)
 
+A lista acima não é exaustiva — há pelo menos mais duas cópias em `static/charts.js`
+(`normaFaixas` na legenda do gráfico Mensal, `~L332`; rótulos do gráfico de Alertas,
+`~L969`). Uma delas já tinha o bug que essa duplicação existe pra causar: a legenda do
+MASP no gráfico Mensal mostrava **"T: 18–22°C"** (a faixa do IBRAM) em vez de 18–23°C —
+corrigido em 2026-09-15, ver `contexto.md` §9.
+
 Se um padrão mudar (acontece — conservação revisa faixas de tempos em tempos), dá pra
 esquecer uma das 5 cópias e os gráficos mostrarem uma faixa diferente da que
 `/api/metricas` está realmente calculando. Recomendo expor os padrões via

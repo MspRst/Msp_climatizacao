@@ -330,7 +330,7 @@ function renderMensal() {
   // ── Padrões para faixas de referência (label e cor) ──────
   const normaFaixas = {
     ibram: { tLabel:'T: 18–22°C', urLabel:'UR: 50–60%', tColor: COLORS.igramFill().replace(/[\d.]+\)$/, '0.12)'),  urColor: COLORS.blue().replace(/[\w#]/g, m => /[0-9a-f]/.test(m) ? m : '').slice(0, 7) + '1a)' },
-    masp:  { tLabel:'T: 18–22°C', urLabel:'UR: 45–55%', tColor: COLORS.igramFill().replace(/[\d.]+\)$/, '0.12)'),  urColor: COLORS.maspFill().replace(/[\d.]+\)$/, '0.10)') },
+    masp:  { tLabel:'T: 18–23°C', urLabel:'UR: 45–55%', tColor: COLORS.igramFill().replace(/[\d.]+\)$/, '0.12)'),  urColor: COLORS.maspFill().replace(/[\d.]+\)$/, '0.10)') },
     bizot: { tLabel:'T: 15–25°C', urLabel:'UR: 40–60%', tColor: COLORS.bizotFill().replace(/[\d.]+\)$/, '0.12)'), urColor: COLORS.bizotFill().replace(/[\d.]+\)$/, '0.12)') },
     todos: { tLabel:null,          urLabel:null,          tColor:null,                   urColor:null },
   };
