@@ -269,14 +269,27 @@ foi feito (o que já foi resolvido nesta sessão não está mais aqui — checkb
 mensal, linha do térreo, cache-busting, exposições com espaço duplo/caractere errado,
 recalcular_periodo (era stub), espaco_expositivo, multi-prédio, `/api/sazonal` ausente,
 página de tendência em branco, cards melhor/pior desempenho, tabela `desvios` morta, regra
-do Híbrido triplicada — tudo isso está corrigido):
+do Híbrido triplicada, faixas de conformidade hardcoded no JS — tudo isso está corrigido):
 
 | # | Item | Detalhe |
 |---|---|---|
-| 1 | Faixas de conformidade hardcoded no JS | ~5 lugares repetem os números que já existem em `padroes_conformidade` no banco. |
-| 2 | `admin.js` com ~3440 linhas | CRUD + parsing de CSV/XLSX + análise de não-conformidades + geração inteira do relatório. Candidato a quebra em módulos. |
+| 1 | `admin.js` com ~3440 linhas | CRUD + parsing de CSV/XLSX + análise de não-conformidades + geração inteira do relatório. Candidato a quebra em módulos. |
 
 ### Resolvido em 2026-09-15
+- **Faixas de conformidade centralizadas no backend** — `padroes_conformidade` (via
+  `conformidade.get_padroes()`, já usada pelos cálculos) agora também alimenta a exibição:
+  `app.py` ganhou `_padroes_para_frontend()` (formata pra `{tMin,tMax,urMin,urMax,tMinFmt,
+  urMinFmt,...,label,desc}`), exposto em `/api/meta` (`padroes`) e passado pro
+  `render_template` do `index.html`. `api.js` ganhou `getPadraoConformidade(chave)`, que lê
+  `window._padroes` (preenchido por `populateFilters()` no boot) com um fallback local
+  idêntico ao banco só pro instante antes do boot responder. Isso eliminou pelo menos 8
+  cópias hardcoded dos números (18–22/45–55/etc.) espalhadas por `admin.js` (`PADROES_NORMA`,
+  `PADROES` da análise de não-conformidades), `charts.js` (zonas do Scatter, legenda do
+  Mensal, `_horarioLabels`, `PADRAO_DESC` do export PNG, faixas do Sazonal, zona do gráfico
+  de Alertas) e texto estático em `index.html`/`modals.html` — mais lugares do que os ~5
+  catalogados originalmente em `ANALISE-TECNICA.md` §2.4. Verificado com Playwright contra o
+  servidor de dev: zero erros de console, valores corretos em todas as telas afetadas
+  (métricas, Scatter, Mensal, Sazonal, Alertas, modal de sensor), sem regressão visual.
 - **Bug real: legenda do MASP no gráfico Mensal mostrava a faixa errada de temperatura** —
   `normaFaixas.masp.tLabel` (`charts.js`, gráfico "Evolução Mensal") dizia **"T: 18–22°C"**
   (a faixa do IBRAM) em vez de **"T: 18–23°C"** (MASP: 18–23°C · 45–55% UR, confirmado
@@ -385,7 +398,7 @@ Variáveis: `DB_PATH`, `ACCESS_TOKEN`, `FLASK_ENV`, `PORT`. Produção via Gunic
 
 | Quero… | Vá para |
 |---|---|
-| Mudar faixa de temperatura/UR de um padrão | Tabela `padroes_conformidade` no banco (lida por `conformidade.get_padroes`) — mas lembrar que o frontend tem cópias hardcoded, ver §9.3 |
+| Mudar faixa de temperatura/UR de um padrão | Tabela `padroes_conformidade` no banco (lida por `conformidade.get_padroes`) — o frontend inteiro lê dali via `/api/meta` (`getPadraoConformidade()` em `api.js`), não precisa editar nada no JS |
 | Adicionar um prédio/andar novo | `_ANDAR_KEYWORDS` em `app.py` (§4), criar sensor via UI ou API com `predio` certo |
 | Entender por que uma exposição não está sendo reconhecida | `_expositivo_para`/`_normalizar_texto` em `app.py` — checar espaço duplo, `º` vs `°`, `predio` da exposição |
 | Adicionar um gráfico no dashboard | `charts.js` + canvas no `templates/index.html` |

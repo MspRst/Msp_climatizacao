@@ -164,6 +164,13 @@ function selectSeg(btn) {
 async function populateFilters() {
   const meta = await API.get('meta');
 
+  // Persiste os padrões de conformidade (fonte: padroes_conformidade no banco) para
+  // getPadraoConformidade() (api.js) — usado por ui.js, charts.js e admin.js em vez de
+  // cada um duplicar os números. admin.js carrega depois deste script, então
+  // aplicarPadroesConformidade já existe como global quando este boot roda.
+  window._padroes = meta.padroes || null;
+  if (typeof aplicarPadroesConformidade === 'function') aplicarPadroesConformidade();
+
   // Persiste o sensor externo detectado pelo backend para uso no gráfico sazonal
   window._sensorExterno = meta.sensor_externo || 'Térreo';
 
@@ -278,11 +285,13 @@ function renderPontosTable() {
   const tb = document.getElementById('tPontos');
   if (!tb || !window._pontosCache.length) return;
 
-  // Mapeamento dos campos por padrão
+  // Mapeamento dos campos por padrão — faixa no label vem de getPadraoConformidade()
+  // (api.js), não mais duplicada aqui.
+  const _lbl = chave => `${getPadraoConformidade(chave).label}  ${getPadraoConformidade(chave).desc}`;
   const campos = {
-    ibram: { total: 'conf_total_ibram', temp: 'conf_temp_ibram', ur: 'conf_ur_ibram',  label: 'IBRAM  18–22°C / 50–60% UR' },
-    masp:  { total: 'conf_total_masp',  temp: 'conf_temp_masp',  ur: 'conf_ur_masp',   label: 'MASP   18–23°C / 45–55% UR' },
-    bizot: { total: 'conf_total_bizot', temp: 'conf_temp_bizot', ur: 'conf_ur_bizot',  label: 'Bizot  15–25°C / 40–60% UR' },
+    ibram: { total: 'conf_total_ibram', temp: 'conf_temp_ibram', ur: 'conf_ur_ibram',  label: _lbl('ibram') },
+    masp:  { total: 'conf_total_masp',  temp: 'conf_temp_masp',  ur: 'conf_ur_masp',   label: _lbl('masp') },
+    bizot: { total: 'conf_total_bizot', temp: 'conf_temp_bizot', ur: 'conf_ur_bizot',  label: _lbl('bizot') },
   };
   const c = campos[padrao];
 

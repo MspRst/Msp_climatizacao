@@ -86,28 +86,30 @@ simples leitura da coluna (`WHEN s.padrao_hibrido = 'masp'` no SQL; `padraoHibri
 a regra antiga (1º andar Frente/Fundo) — comportamento observável não mudou, confirmado
 comparando `/api/metricas` e `/api/pontos` antes/depois no servidor de dev.
 
-### 2.4 — Faixas de conformidade (18–22°C, 45–55% etc.) hardcoded em ~5 lugares do JS
+### 2.4 — Faixas de conformidade (18–22°C, 45–55% etc.) hardcoded em ~5 lugares do JS — ✅ resolvido em 2026-09-15
 
-O backend já tem uma tabela própria (`padroes_conformidade`) e um módulo dedicado
-(`conformidade.py`) descrito como "fonte única de verdade". O frontend ignora isso e
-repete os mesmos números em:
+O backend já tinha uma tabela própria (`padroes_conformidade`) e um módulo dedicado
+(`conformidade.py`) descrito como "fonte única de verdade". O frontend ignorava isso e
+repetia os mesmos números em pelo menos 8 lugares (mais do que os ~5 catalogados
+originalmente): `PADROES_NORMA` e o `PADROES` de análise de não-conformidades em
+`admin.js`; `normaFaixas` (legenda do Mensal), `_horarioLabels`, `PADRAO_DESC`
+(export PNG), as faixas do Sazonal e as duas zonas desenhadas no Scatter e no gráfico
+de Alertas em `charts.js`; e mais 8 trechos de texto estático em `templates/index.html`
+e `modals.html`. Uma dessas cópias já tinha o bug que a duplicação existe pra causar: a
+legenda do MASP no gráfico Mensal mostrava **"T: 18–22°C"** (a faixa do IBRAM) em vez de
+18–23°C (corrigido antes desta centralização, commit `00959c1`).
 
-- `static/admin.js:48` (`PADROES_NORMA`)
-- `static/admin.js:254` e `:267` (fallbacks de threshold)
-- `static/admin.js:1642` (outra cópia, para outro fim)
-- `static/charts.js:1174` (faixas do gráfico Sazonal — que eu segui ao implementar o
-  endpoint novo, por consistência com o que já existia)
-
-A lista acima não é exaustiva — há pelo menos mais duas cópias em `static/charts.js`
-(`normaFaixas` na legenda do gráfico Mensal, `~L332`; rótulos do gráfico de Alertas,
-`~L969`). Uma delas já tinha o bug que essa duplicação existe pra causar: a legenda do
-MASP no gráfico Mensal mostrava **"T: 18–22°C"** (a faixa do IBRAM) em vez de 18–23°C —
-corrigido em 2026-09-15, ver `contexto.md` §9.
-
-Se um padrão mudar (acontece — conservação revisa faixas de tempos em tempos), dá pra
-esquecer uma das 5 cópias e os gráficos mostrarem uma faixa diferente da que
-`/api/metricas` está realmente calculando. Recomendo expor os padrões via
-`/api/meta` (ou endpoint próprio) e os 5 pontos do JS lerem dali.
+**Resolvido**: `app.py` ganhou `_padroes_para_frontend()`, que formata
+`conformidade.get_padroes()` (a mesma fonte já usada pelos cálculos) para o shape
+`{tMin,tMax,urMin,urMax,tMinFmt,...,label,desc}`, exposto em `/api/meta` (`padroes`) e
+passado para `render_template("index.html", padroes=...)`. No frontend, `api.js` ganhou
+`getPadraoConformidade(chave)`, que lê `window._padroes` (preenchido por
+`populateFilters()` no boot) com um fallback local só para o instante antes do boot
+responder — nunca uma segunda fonte de verdade. Todos os pontos listados acima agora
+leem dali; `templates/index.html`/`modals.html` usam `{{ padroes.masp.tMinFmt }}` etc.
+Verificado com Playwright contra o servidor de dev: zero erros de console, valores
+corretos em todas as telas (métricas, Scatter, Mensal, Sazonal, Alertas, modal de
+sensor), sem regressão visual.
 
 ### 2.5 — Performance
 
@@ -136,5 +138,5 @@ automatizados para validar).
 | Alta (destrutivo, precisa de OK seu) | Dropar `medicoes_nova`, `dados_diarios`, `dados_mensais`, `pontos_de_medicao` |
 | ~~Média~~ | ~~Remover ou reativar a trilha morta de `desvios`~~ — feito em 2026-09-15 |
 | ~~Média~~ | ~~Centralizar regra Híbrido (`padrao_hibrido` por sensor)~~ — feito em 2026-09-15 |
-| Média | Centralizar faixas de conformidade (ler do backend, não hardcode) |
+| ~~Média~~ | ~~Centralizar faixas de conformidade (ler do backend, não hardcode)~~ — feito em 2026-09-15 |
 | Baixa | Quebrar `admin.js` em módulos menores |

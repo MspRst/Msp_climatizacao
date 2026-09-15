@@ -6,6 +6,22 @@ if (window.__masp_loaded) {
 }
 window.__masp_loaded = true;
 
+// ── PADRÕES DE CONFORMIDADE ────────────────────────────────
+// Fonte única de verdade: tabela padroes_conformidade no banco. populateFilters()
+// (ui.js) preenche window._padroes a partir de /api/meta assim que o boot responde.
+// O fallback abaixo cobre só o instante entre o parse deste script e essa resposta
+// (valores idênticos ao banco) — nunca uma segunda cópia pra manter em dia. Antes
+// disso, cada tela (métricas, gráficos, relatório) repetia esses números por conta
+// própria — já causou um bug real de legenda com a faixa errada (ANALISE-TECNICA §2.4).
+const _PADROES_FALLBACK = {
+  ibram: { tMin: 18, tMax: 22, urMin: 50, urMax: 60, label: 'IBRAM', desc: '18–22°C · 50–60% UR' },
+  masp:  { tMin: 18, tMax: 23, urMin: 45, urMax: 55, label: 'MASP',  desc: '18–23°C · 45–55% UR' },
+  bizot: { tMin: 15, tMax: 25, urMin: 40, urMax: 60, label: 'Bizot', desc: '15–25°C · 40–60% UR' },
+};
+function getPadraoConformidade(chave) {
+  return (window._padroes && window._padroes[chave]) || _PADROES_FALLBACK[chave];
+}
+
 // ── UTILITÁRIOS ───────────────────────────────────────────
 function escapeHtml(str) {
   if (str == null) return '';

@@ -13,7 +13,7 @@ from collections import defaultdict
 from datetime import datetime as _dt, date as _date
 from flask import Flask, jsonify, send_file, request, abort, render_template
 from functools import wraps
-from conformidade import calcular_conformidade, calcular_ponto_orvalho
+from conformidade import calcular_conformidade, calcular_ponto_orvalho, get_padroes
 
 # ── CACHE SIMPLES EM MEMÓRIA ──────────────────────────────
 # Evita reprocessar queries pesadas enquanto os dados não mudam.
@@ -383,6 +383,43 @@ def cached_endpoint(f=None, *, ttl: int = None):
     return _decorator(f) if f is not None else _decorator
 
 
+# ── PADRÕES DE CONFORMIDADE (formatados p/ frontend) ──────
+_PADRAO_ID_PARA_CHAVE = {1: "ibram", 2: "masp", 3: "bizot"}
+_PADRAO_LABEL = {1: "IBRAM", 2: "MASP", 3: "Bizot"}
+
+
+def _fmt_num(n):
+    """Formata sem casas decimais supérfluas (22.0 -> '22', 22.5 -> '22.5')."""
+    return f"{n:g}" if isinstance(n, (int, float)) else "?"
+
+
+def _padroes_para_frontend():
+    """
+    Formata conformidade.get_padroes() (fonte única de verdade, tabela
+    padroes_conformidade) no shape consumido pelo JS e pelos templates —
+    tMin/tMax/urMin/urMax/label/desc. Evita que cada tela que precisa mostrar as
+    faixas (métricas, gráficos, relatório) mantenha sua própria cópia dos números
+    (ver ANALISE-TECNICA.md §2.4 — já causou pelo menos um bug real de legenda errada).
+    """
+    padroes = get_padroes()
+    out = {}
+    for pid, chave in _PADRAO_ID_PARA_CHAVE.items():
+        p = padroes.get(pid, {})
+        t_min, t_max = p.get("temp_min"), p.get("temp_max")
+        u_min, u_max = p.get("umid_min"), p.get("umid_max")
+        out[chave] = {
+            # Numéricos — para cálculo (comparações de threshold no JS).
+            "tMin": t_min, "tMax": t_max, "urMin": u_min, "urMax": u_max,
+            # Formatados — para exibição (sem ".0" supérfluo; usados nos templates Jinja
+            # e disponíveis pro JS também, em vez de cada tela formatar por conta própria).
+            "tMinFmt": _fmt_num(t_min), "tMaxFmt": _fmt_num(t_max),
+            "urMinFmt": _fmt_num(u_min), "urMaxFmt": _fmt_num(u_max),
+            "label": _PADRAO_LABEL.get(pid, chave.upper()),
+            "desc": f"{_fmt_num(t_min)}–{_fmt_num(t_max)}°C · {_fmt_num(u_min)}–{_fmt_num(u_max)}% UR",
+        }
+    return out
+
+
 # ── ROTA PRINCIPAL ────────────────────────────────────────
 # ── CACHE BUSTING ─────────────────────────────────────────
 import hashlib as _hashlib
@@ -444,7 +481,7 @@ def index():
         os.path.join(static_dir, "charts.js"),
         os.path.join(static_dir, "admin.js"),
     ])
-    html = render_template("index.html", api_version=api_js_hash)
+    html = render_template("index.html", api_version=api_js_hash, padroes=_padroes_para_frontend())
     resp = make_response(html, 200)
     resp.headers["Content-Type"] = "text/html; charset=utf-8"
     resp.headers["Cache-Control"] = "no-cache, must-revalidate"
@@ -1049,6 +1086,7 @@ def meta():
         "anos": anos,
         "sensor_externo": sensor_externo,
         "ultima_medicao": ultima_medicao,
+        "padroes": _padroes_para_frontend(),
     })
 
 

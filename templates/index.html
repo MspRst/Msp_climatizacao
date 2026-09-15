@@ -97,20 +97,20 @@
       <div class="trend">🏛</div>
       <div class="lbl">Total IBRAM</div>
       <div class="val" id="mTotal">–</div>
-      <div class="sub">18–22°C / 50–60% UR</div>
+      <div class="sub">{{ padroes.ibram.tMinFmt }}–{{ padroes.ibram.tMaxFmt }}°C / {{ padroes.ibram.urMinFmt }}–{{ padroes.ibram.urMaxFmt }}% UR</div>
     </div>
-    
+
     <div class="metric-tile">
       <div class="trend">🎨</div>
       <div class="lbl">Total MASP</div>
       <div class="val" id="mMasp">–</div>
-      <div class="sub">18–23°C / 45–55% UR</div>
+      <div class="sub">{{ padroes.masp.tMinFmt }}–{{ padroes.masp.tMaxFmt }}°C / {{ padroes.masp.urMinFmt }}–{{ padroes.masp.urMaxFmt }}% UR</div>
     </div>
     <div class="metric-tile">
       <div class="trend">✦</div>
       <div class="lbl">Total Bizot</div>
       <div class="val" id="mBizot">–</div>
-      <div class="sub">15–25°C / 40–60% UR</div>
+      <div class="sub">{{ padroes.bizot.tMinFmt }}–{{ padroes.bizot.tMaxFmt }}°C / {{ padroes.bizot.urMinFmt }}–{{ padroes.bizot.urMaxFmt }}% UR</div>
     </div>
     <div class="metric-tile">
       <div class="trend">📊</div>
@@ -137,21 +137,21 @@
       <div class="card-title">Conformidade por Parâmetro</div>
       <div class="prog-item">
         <div class="prog-header">
-          <span class="prog-name">🏛 IBRAM — T (18–22°C) + UR (50–60%) combinados</span>
+          <span class="prog-name">🏛 IBRAM — T ({{ padroes.ibram.tMinFmt }}–{{ padroes.ibram.tMaxFmt }}°C) + UR ({{ padroes.ibram.urMinFmt }}–{{ padroes.ibram.urMaxFmt }}%) combinados</span>
           <span class="prog-pct" id="pct0">–</span>
         </div>
         <div class="prog-track"><div class="prog-fill-bar fill-green" style="width:0" data-w="0"></div></div>
       </div>
       <div class="prog-item">
         <div class="prog-header">
-          <span class="prog-name">🎨 MASP — T (18–23°C) + UR (45–55%) combinados</span>
+          <span class="prog-name">🎨 MASP — T ({{ padroes.masp.tMinFmt }}–{{ padroes.masp.tMaxFmt }}°C) + UR ({{ padroes.masp.urMinFmt }}–{{ padroes.masp.urMaxFmt }}%) combinados</span>
           <span class="prog-pct" id="pct1">–</span>
         </div>
         <div class="prog-track"><div class="prog-fill-bar fill-red" style="width:0" data-w="0"></div></div>
       </div>
       <div class="prog-item">
         <div class="prog-header">
-          <span class="prog-name">✦ Bizot — T (15–25°C) + UR (40–60%) combinados</span>
+          <span class="prog-name">✦ Bizot — T ({{ padroes.bizot.tMinFmt }}–{{ padroes.bizot.tMaxFmt }}°C) + UR ({{ padroes.bizot.urMinFmt }}–{{ padroes.bizot.urMaxFmt }}%) combinados</span>
           <span class="prog-pct" id="pct2">–</span>
         </div>
         <div class="prog-track"><div class="prog-fill-bar fill-blue" style="width:0" data-w="0"></div></div>
@@ -405,7 +405,7 @@
     </div>
     <div class="card">
       <div class="card-title">Posicionamento T Médio × UR Média — Zona IBRAM</div>
-      <div class="chart-note">Cada ponto = sensor. Zonas: vermelho = IBRAM (18–22°C / 50–60%), laranja = MASP (18–23°C / 45–55% UR), azul = Bizot (15–25°C / 40–60%). Cor do ponto = conformidade MASP.</div>
+      <div class="chart-note">Cada ponto = sensor. Zonas: vermelho = IBRAM ({{ padroes.ibram.tMinFmt }}–{{ padroes.ibram.tMaxFmt }}°C / {{ padroes.ibram.urMinFmt }}–{{ padroes.ibram.urMaxFmt }}%), laranja = MASP ({{ padroes.masp.tMinFmt }}–{{ padroes.masp.tMaxFmt }}°C / {{ padroes.masp.urMinFmt }}–{{ padroes.masp.urMaxFmt }}% UR), azul = Bizot ({{ padroes.bizot.tMinFmt }}–{{ padroes.bizot.tMaxFmt }}°C / {{ padroes.bizot.urMinFmt }}–{{ padroes.bizot.urMaxFmt }}%). Cor do ponto = conformidade MASP.</div>
       <div class="chart-wrap chart-wrap-tall"><canvas id="cScatter"></canvas></div>
     </div>
   </div>
@@ -587,19 +587,19 @@
             <label class="rep-padrao-card rep-padrao-card--active" data-padrao="bizot" onclick="selectReportPadrao(this)">
               <input type="radio" name="repPadrao" value="bizot" checked style="display:none">
               <div class="rep-padrao-sigla">Bizot</div>
-              <div class="rep-padrao-range">15–25°C · 40–60% UR</div>
+              <div class="rep-padrao-range">{{ padroes.bizot.tMinFmt }}–{{ padroes.bizot.tMaxFmt }}°C · {{ padroes.bizot.urMinFmt }}–{{ padroes.bizot.urMaxFmt }}% UR</div>
               <div class="rep-padrao-desc">Referência internacional para acervos mistos</div>
             </label>
             <label class="rep-padrao-card" data-padrao="masp" onclick="selectReportPadrao(this)">
               <input type="radio" name="repPadrao" value="masp" style="display:none">
               <div class="rep-padrao-sigla">MASP</div>
-              <div class="rep-padrao-range">18–23°C · 45–55% UR</div>
+              <div class="rep-padrao-range">{{ padroes.masp.tMinFmt }}–{{ padroes.masp.tMaxFmt }}°C · {{ padroes.masp.urMinFmt }}–{{ padroes.masp.urMaxFmt }}% UR</div>
               <div class="rep-padrao-desc">Parâmetro interno de uso corrente</div>
             </label>
             <label class="rep-padrao-card" data-padrao="ibram" onclick="selectReportPadrao(this)">
               <input type="radio" name="repPadrao" value="ibram" style="display:none">
               <div class="rep-padrao-sigla">IBRAM</div>
-              <div class="rep-padrao-range">18–22°C · 50–60% UR</div>
+              <div class="rep-padrao-range">{{ padroes.ibram.tMinFmt }}–{{ padroes.ibram.tMaxFmt }}°C · {{ padroes.ibram.urMinFmt }}–{{ padroes.ibram.urMaxFmt }}% UR</div>
               <div class="rep-padrao-desc">Política Nacional de Museus</div>
             </label>
             <label class="rep-padrao-card" data-padrao="hibrido" onclick="selectReportPadrao(this)">

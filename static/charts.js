@@ -165,9 +165,14 @@ async function loadPontos(filters = {}) {
           const { ctx, scales: { x, y } } = chart;
           ctx.save();
 
-          // Bizot: 15–25°C / 40–60% UR
-          const bx1 = x.getPixelForValue(15), bx2 = x.getPixelForValue(25);
-          const by1 = y.getPixelForValue(60), by2 = y.getPixelForValue(40);
+          // Faixas vêm de getPadraoConformidade() (api.js) — fonte: padroes_conformidade
+          const bizotP = getPadraoConformidade('bizot');
+          const maspP  = getPadraoConformidade('masp');
+          const ibramP = getPadraoConformidade('ibram');
+
+          // Bizot
+          const bx1 = x.getPixelForValue(bizotP.tMin), bx2 = x.getPixelForValue(bizotP.tMax);
+          const by1 = y.getPixelForValue(bizotP.urMax), by2 = y.getPixelForValue(bizotP.urMin);
           ctx.fillStyle = COLORS.bizotFill().replace(/[\d.]+\)$/, '0.08)');
           ctx.fillRect(bx1, by1, bx2 - bx1, by2 - by1);
           ctx.strokeStyle = COLORS.bizot();
@@ -178,9 +183,9 @@ async function loadPontos(filters = {}) {
           ctx.font = 'bold 9px "DM Mono", monospace';
           ctx.fillText('BIZOT', bx1 + 4, by1 + 12);
 
-          // MASP: 18–23°C / 45–55% UR
-          const mx1 = x.getPixelForValue(18), mx2 = x.getPixelForValue(23);
-          const my1 = y.getPixelForValue(55), my2 = y.getPixelForValue(45);
+          // MASP
+          const mx1 = x.getPixelForValue(maspP.tMin), mx2 = x.getPixelForValue(maspP.tMax);
+          const my1 = y.getPixelForValue(maspP.urMax), my2 = y.getPixelForValue(maspP.urMin);
           ctx.fillStyle = COLORS.maspFill().replace(/[\d.]+\)$/, '0.08)');
           ctx.fillRect(mx1, my1, mx2 - mx1, my2 - my1);
           ctx.strokeStyle = COLORS.masp();
@@ -191,9 +196,9 @@ async function loadPontos(filters = {}) {
           ctx.font = 'bold 9px "DM Mono", monospace';
           ctx.fillText('MASP', mx1 + 4, my1 + 12);
 
-          // IBRAM: 18–22°C / 50–60% UR
-          const ix1 = x.getPixelForValue(18), ix2 = x.getPixelForValue(22);
-          const iy1 = y.getPixelForValue(60), iy2 = y.getPixelForValue(50);
+          // IBRAM
+          const ix1 = x.getPixelForValue(ibramP.tMin), ix2 = x.getPixelForValue(ibramP.tMax);
+          const iy1 = y.getPixelForValue(ibramP.urMax), iy2 = y.getPixelForValue(ibramP.urMin);
           ctx.fillStyle = COLORS.igramFill().replace(/[\d.]+\)$/, '0.05)');
           ctx.fillRect(ix1, iy1, ix2 - ix1, iy2 - iy1);
           ctx.strokeStyle = COLORS.ibram();
@@ -328,10 +333,12 @@ function renderMensal() {
   const yMax = Math.min(100, Math.ceil( (Math.max(dataMax, 95) + 2) / 5) * 5);
 
   // ── Padrões para faixas de referência (label e cor) ──────
+  // Faixas vêm de getPadraoConformidade() (api.js) — fonte: padroes_conformidade
+  const _pIbram = getPadraoConformidade('ibram'), _pMasp = getPadraoConformidade('masp'), _pBizot = getPadraoConformidade('bizot');
   const normaFaixas = {
-    ibram: { tLabel:'T: 18–22°C', urLabel:'UR: 50–60%', tColor: COLORS.igramFill().replace(/[\d.]+\)$/, '0.12)'),  urColor: COLORS.blue().replace(/[\w#]/g, m => /[0-9a-f]/.test(m) ? m : '').slice(0, 7) + '1a)' },
-    masp:  { tLabel:'T: 18–23°C', urLabel:'UR: 45–55%', tColor: COLORS.igramFill().replace(/[\d.]+\)$/, '0.12)'),  urColor: COLORS.maspFill().replace(/[\d.]+\)$/, '0.10)') },
-    bizot: { tLabel:'T: 15–25°C', urLabel:'UR: 40–60%', tColor: COLORS.bizotFill().replace(/[\d.]+\)$/, '0.12)'), urColor: COLORS.bizotFill().replace(/[\d.]+\)$/, '0.12)') },
+    ibram: { tLabel:`T: ${_pIbram.tMin}–${_pIbram.tMax}°C`, urLabel:`UR: ${_pIbram.urMin}–${_pIbram.urMax}%`, tColor: COLORS.igramFill().replace(/[\d.]+\)$/, '0.12)'),  urColor: COLORS.blue().replace(/[\w#]/g, m => /[0-9a-f]/.test(m) ? m : '').slice(0, 7) + '1a)' },
+    masp:  { tLabel:`T: ${_pMasp.tMin}–${_pMasp.tMax}°C`, urLabel:`UR: ${_pMasp.urMin}–${_pMasp.urMax}%`, tColor: COLORS.igramFill().replace(/[\d.]+\)$/, '0.12)'),  urColor: COLORS.maspFill().replace(/[\d.]+\)$/, '0.10)') },
+    bizot: { tLabel:`T: ${_pBizot.tMin}–${_pBizot.tMax}°C`, urLabel:`UR: ${_pBizot.urMin}–${_pBizot.urMax}%`, tColor: COLORS.bizotFill().replace(/[\d.]+\)$/, '0.12)'), urColor: COLORS.bizotFill().replace(/[\d.]+\)$/, '0.12)') },
     todos: { tLabel:null,          urLabel:null,          tColor:null,                   urColor:null },
   };
   const faixa = normaFaixas[padrao] ?? normaFaixas.ibram;
@@ -625,9 +632,9 @@ function exportMensalChart() {
     // Labels legíveis
     const GRAN_LABEL  = { hora:'Hora a hora', dia:'Dia a dia', mes:'Mês a mês', ano:'Ano a ano' };
     const PADRAO_DESC = {
-      ibram: 'IBRAM — 18–22°C / 50–60% UR',
-      masp:  'MASP — 18–23°C / 45–55% UR',
-      bizot: 'Bizot — 15–25°C / 40–60% UR',
+      ibram: `IBRAM — ${getPadraoConformidade('ibram').desc.replace(' · ', ' / ')}`,
+      masp:  `MASP — ${getPadraoConformidade('masp').desc.replace(' · ', ' / ')}`,
+      bizot: `Bizot — ${getPadraoConformidade('bizot').desc.replace(' · ', ' / ')}`,
       todos: 'Todos os padrões',
     };
 
@@ -964,12 +971,13 @@ function renderSensores() {
 // Cada entrada: { ponto?: string, data: [{hora, nc_temp, nc_ur, n}] }
 let _horarioCache = {};
 
-// Labels das faixas exibidas na legenda — consumidas pela UI
-const _horarioLabels = {
-  ibram: { labelTemp: '% fora da Temp (18–22°C)', labelUr: '% fora da UR (50–60%)' },
-  masp:  { labelTemp: '% fora da Temp (18–23°C)', labelUr: '% fora da UR (45–55%)' },
-  bizot: { labelTemp: '% fora da Temp (15–25°C)', labelUr: '% fora da UR (40–60%)' },
-};
+// Labels das faixas exibidas na legenda — consumidas pela UI. Função (não objeto
+// estático) porque getPadraoConformidade() só tem os valores reais do banco depois do
+// boot; ver zonasFaixas acima para o mesmo padrão.
+function _horarioLabels(chave) {
+  const p = getPadraoConformidade(chave);
+  return { labelTemp: `% fora da Temp (${p.tMin}–${p.tMax}°C)`, labelUr: `% fora da UR (${p.urMin}–${p.urMax}%)` };
+}
 
 /**
  * Busca os dados agregados do endpoint para o padrão e sensor dados,
@@ -1000,7 +1008,7 @@ function renderHorario() {
   if (window._charts?.cHorario) window._charts.cHorario.destroy();
 
   const padrao = document.querySelector('#segHorario .seg-btn.active')?.dataset.horario || 'ibram';
-  const faixas = _horarioLabels[padrao] || _horarioLabels.ibram;
+  const faixas = _horarioLabels(padrao);
 
   // Monta arrays indexados por hora (0–23); horas sem dados ficam null
   const ncTemp = Array(24).fill(null);
@@ -1169,13 +1177,10 @@ function renderSazonal() {
   const pfx     = isTemp ? 'temp' : 'ur';
   const unidade = isTemp ? '°C'   : '%';
 
-  const faixas = {
-    ibram: { tempMin: 18, tempMax: 22, urMin: 50, urMax: 60, label: 'IBRAM' },
-    masp:  { tempMin: 18, tempMax: 23, urMin: 45, urMax: 55, label: 'MASP'  },
-    bizot: { tempMin: 15, tempMax: 25, urMin: 40, urMax: 60, label: 'Bizot' },
-  }[padrao];
-  const faixaMin    = isTemp ? faixas.tempMin : faixas.urMin;
-  const faixaMax    = isTemp ? faixas.tempMax : faixas.urMax;
+  // Faixa vem de getPadraoConformidade() (api.js) — fonte: padroes_conformidade
+  const faixas      = getPadraoConformidade(padrao);
+  const faixaMin    = isTemp ? faixas.tMin : faixas.urMin;
+  const faixaMax    = isTemp ? faixas.tMax : faixas.urMax;
   const padraoLabel = faixas.label;
 
   const estacoes = ['Verão', 'Outono', 'Inverno', 'Primavera'];
@@ -1577,25 +1582,26 @@ function buildAlertCharts(alertas) {
           const { ctx, scales: { y }, chartArea } = chart;
           if (!y) return;
           ctx.save();
-          // Faixa segura IBRAM 50–60%
-          const y1 = y.getPixelForValue(60), y2 = y.getPixelForValue(50);
+          // Faixa segura IBRAM — vem de getPadraoConformidade() (api.js)
+          const ibramP = getPadraoConformidade('ibram');
+          const y1 = y.getPixelForValue(ibramP.urMax), y2 = y.getPixelForValue(ibramP.urMin);
           ctx.fillStyle = 'rgba(22,163,74,.06)';
           ctx.fillRect(chartArea.left, y1, chartArea.right - chartArea.left, y2 - y1);
-          // Linha limite 60%
-          if (y.min <= 60 && y.max >= 60) {
-            const py = y.getPixelForValue(60);
+          // Linha limite superior
+          if (y.min <= ibramP.urMax && y.max >= ibramP.urMax) {
+            const py = y.getPixelForValue(ibramP.urMax);
             ctx.strokeStyle = 'rgba(22,163,74,.4)'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
             ctx.beginPath(); ctx.moveTo(chartArea.left, py); ctx.lineTo(chartArea.right, py); ctx.stroke();
             ctx.fillStyle = '#16a34a'; ctx.font = '9px "DM Mono", monospace';
-            ctx.fillText('60% — limite sup.', chartArea.left + 4, py - 3);
+            ctx.fillText(`${ibramP.urMax}% — limite sup.`, chartArea.left + 4, py - 3);
           }
-          // Linha limite 50%
-          if (y.min <= 50 && y.max >= 50) {
-            const py = y.getPixelForValue(50);
+          // Linha limite inferior
+          if (y.min <= ibramP.urMin && y.max >= ibramP.urMin) {
+            const py = y.getPixelForValue(ibramP.urMin);
             ctx.strokeStyle = 'rgba(22,163,74,.4)'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
             ctx.beginPath(); ctx.moveTo(chartArea.left, py); ctx.lineTo(chartArea.right, py); ctx.stroke();
             ctx.fillStyle = '#16a34a'; ctx.font = '9px "DM Mono", monospace';
-            ctx.fillText('50% — limite inf.', chartArea.left + 4, py + 11);
+            ctx.fillText(`${ibramP.urMin}% — limite inf.`, chartArea.left + 4, py + 11);
           }
           ctx.setLineDash([]); ctx.restore();
         }

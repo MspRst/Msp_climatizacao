@@ -44,14 +44,22 @@ function updateThreshRow(checkbox) {
   hint.style.display  = hasRows ? 'none'  : 'block';
 }
 
-// Padrões fixos por norma
-const PADROES_NORMA = {
-  ibram:   { urMin: 50, urMax: 60, tMin: 18, tMax: 22, label: 'IBRAM',   desc: '18–22°C · 50–60% UR' },
-  masp:    { urMin: 45, urMax: 55, tMin: 18, tMax: 23, label: 'MASP',    desc: '18–23°C · 45–55% UR' },
-  bizot:   { urMin: 40, urMax: 60, tMin: 15, tMax: 25, label: 'Bizot',   desc: '15–25°C · 40–60% UR' },
+// Padrões por norma — ibram/masp/bizot vêm de getPadraoConformidade() (api.js, que lê
+// window._padroes/padroes_conformidade). Em, o parse deste script ainda não tem
+// window._padroes preenchido, então isso pega o fallback local do api.js (mesmos
+// números do banco); aplicarPadroesConformidade() reaplica com os valores reais assim
+// que o boot responde (chamada por populateFilters() em ui.js).
+let PADROES_NORMA = {
+  ibram:   { ...getPadraoConformidade('ibram') },
+  masp:    { ...getPadraoConformidade('masp') },
+  bizot:   { ...getPadraoConformidade('bizot') },
   hibrido: { label: 'Híbrido (MASP + Bizot)', desc: 'MASP ou Bizot por sensor — configurável em Gerenciar → Sensores' },
   custom:  { label: 'Personalizado', desc: 'Faixas por ponto' },
 };
+
+function aplicarPadroesConformidade() {
+  ['ibram', 'masp', 'bizot'].forEach(k => Object.assign(PADROES_NORMA[k], getPadraoConformidade(k)));
+}
 
 function selectReportPadrao(card) {
   document.querySelectorAll('.rep-padrao-card').forEach(c => c.classList.remove('rep-padrao-card--active'));
@@ -1685,11 +1693,16 @@ async function handleFilesAPI(files) {
 }
 
 // ── ANÁLISE DE NÃO-CONFORMIDADES ─────────────────────────
-const PADROES = {
-  ibram: { label: 'IBRAM', tMin: 18, tMax: 22, uMin: 50, uMax: 60 },
-  masp:  { label: 'MASP',  tMin: 18, tMax: 23, uMin: 45, uMax: 55 },
-  bizot: { label: 'Bizot', tMin: 15, tMax: 25, uMin: 40, uMax: 60 },
-};
+// Deriva de getPadraoConformidade() (api.js) em vez de manter uma 2ª cópia dos mesmos
+// números com nomes de campo diferentes (uMin/uMax em vez de urMin/urMax).
+function padroesParaAnalise() {
+  const out = {};
+  ['ibram', 'masp', 'bizot'].forEach(k => {
+    const p = getPadraoConformidade(k);
+    out[k] = { label: p.label, tMin: p.tMin, tMax: p.tMax, uMin: p.urMin, uMax: p.urMax };
+  });
+  return out;
+}
 
 function analisarNaoConformidades(rows) {
   // Agrupa por sensor
@@ -1722,7 +1735,7 @@ function analisarNaoConformidades(rows) {
     const naoConf = {};
     let temProblema = false;
 
-    for (const [key, p] of Object.entries(PADROES)) {
+    for (const [key, p] of Object.entries(padroesParaAnalise())) {
       const ncT = s.leituras.filter(r => r.temperatura < p.tMin || r.temperatura > p.tMax).length;
       const ncU = s.leituras.filter(r => r.umidade    < p.uMin || r.umidade    > p.uMax).length;
       const ncTotal = s.leituras.filter(r =>
@@ -1767,7 +1780,7 @@ async function openNaoConformidadesModal(analise) {
     const sDB = _ncSensoresDB.find(x => x.nome === s.nome || (x.aliases||[]).some(a => a.alias === s.nome));
     const predio = sDB?.predio || 'Lina';
 
-    const rows = Object.entries(PADROES).map(([key, p]) => {
+    const rows = Object.entries(padroesParaAnalise()).map(([key, p]) => {
       const nc = s.naoConf[key];
       const cor = nc.pct === 0 ? 'var(--green)' : nc.pct < 20 ? 'var(--amber)' : 'var(--red)';
       return `<td style="text-align:center;font-family:var(--mono);font-size:.75rem;color:${cor};font-weight:600">
@@ -1802,7 +1815,7 @@ async function openNaoConformidadesModal(analise) {
             </tr>
           </thead>
           <tbody>
-            ${Object.entries(PADROES).map(([key, p]) => {
+            ${Object.entries(padroesParaAnalise()).map(([key, p]) => {
               const nc = s.naoConf[key];
               const cor = nc.pct === 0 ? 'var(--green)' : nc.pct < 20 ? 'var(--amber)' : 'var(--red)';
               const tCor = (s.tMin < p.tMin || s.tMax > p.tMax) ? 'color:var(--red)' : '';
