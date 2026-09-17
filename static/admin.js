@@ -954,7 +954,7 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
       <div class="block-title">${tx.occurrences_registered} ${tx.period}</div>
       ${ocorrencias.map(o => {
         const ini  = (o.data_inicio || '').substring(0, 16).replace('T', ' ');
-        const fim  = o.data_fim ? o.data_fim.substring(0, 16).replace('T', ' ') : (lang === 'pt' ? 'em aberto' : 'ongoing');
+        const fim  = o.data_fim ? o.data_fim.substring(0, 16).replace('T', ' ') : null;
         const auto = o.tipo === 'pico_automatico';
         const sensNomes = (o.sensores || []).map(s => escapeHtml(s.nome)).join(', ');
         const respHtml = o.responsavel ? `<span class="ocorr-resp">${escapeHtml(o.responsavel)}</span>` : '';
@@ -967,7 +967,7 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
           + '<div class="ocorr-row1">'
           + '<span class="ocorr-badge">' + (OCORR_LABELS[o.tipo] || o.tipo) + '</span>'
           + (auto ? '<span class="ocorr-auto-tag">⚡ ' + (lang === 'pt' ? 'automático' : 'automatic') + '</span>' : '')
-          + '<span class="ocorr-datas">' + ini + ' → ' + fim + '</span>'
+          + '<span class="ocorr-datas">' + ini + (fim && fim !== ini ? ' → ' + fim : '') + '</span>'
           + respHtml
           + '</div>'
           + sensHtml
@@ -3341,7 +3341,6 @@ const I18N = {
     worst_perf: "Pior desempenho",
     on_exhibition: "Em Exposição",
     maintenance: "Manutenção",
-    ongoing: "em aberto",
     tech_notes: "Notas Técnicas",
     dev_analysis_t: "Análise de Desvios — Temperatura (°C)",
     dev_analysis_ur: "Análise de Desvios — Umidade Relativa (%)",
@@ -3445,7 +3444,6 @@ const I18N = {
     worst_perf: "Worst performance",
     on_exhibition: "On Exhibition",
     maintenance: "Maintenance",
-    ongoing: "ongoing",
     tech_notes: "Technical Notes",
     dev_analysis_t: "Deviation Analysis — Temperature (°C)",
     dev_analysis_ur: "Deviation Analysis — Relative Humidity (%)",

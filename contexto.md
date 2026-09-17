@@ -5,7 +5,7 @@
 > (dívida técnica catalogada — dead code, duplicações, recomendações). Este arquivo é sobre
 > **como o código está organizado hoje e por que**.
 
-Última atualização: 2026-09-15 · Branch: `main` — ver §3 para o histórico de commits recente
+Última atualização: 2026-09-17 · Branch: `main` — ver §3 para o histórico de commits recente
 
 ---
 
@@ -159,6 +159,38 @@ contrário deixa em branco para o usuário escolher.
 colunas `ponto`/`data_hora`/`temperatura`/`umidade` (formato genérico). Se um dia for preciso
 importar Pietro em lote via CLI (em vez de pela tela), replicar a lógica de
 `upload_xlsx()` (`app.py`) lá, ou apontar a CLI para chamar o mesmo endpoint.
+
+### Armadilha real encontrada: vírgula decimal virando data no Excel
+Em exports antigos do Pietro (antes da padronização de 2026 — ver "Histórico pré-2026" logo
+abaixo), quando a planilha original usava vírgula como separador decimal (`"21,8"`) e alguém
+abriu/salvou o arquivo no Excel com autodetecção de tipo ligada, valores de temperatura que
+"pareciam" uma data válida (dia ≤31, "mês" ≤9, ou seja só 1 casa decimal) foram silenciosamente
+convertidos em células de data (`21,8` → 21/8, dia=21 mês=8). Valores que não formam data válida
+(ex. `22,0`, mês=0 inválido) permaneceram texto normal — então dentro do MESMO arquivo, a coluna
+de temperatura mistura `datetime` corrompido e string normal linha a linha. Reversível com
+`temp = data.day + data.month/10` (confirmado reconstruindo uma série de 24h e checando que fica
+suave/fisicamente plausível — nenhum mês > 9 apareceu em nenhum arquivo, confirmando 1 casa
+decimal). Umidade nunca é afetada (valores ≥37 nunca formam dia/mês válido). Se aparecer outro
+lote de planilhas antigas do Pietro com esse sintoma (coluna de temperatura com tipo `datetime`
+inesperado no openpyxl), é o mesmo bug.
+
+### Histórico pré-2026 do Pietro (importado em 2026-09-17)
+`graficos_pra_alterar/` (na raiz, agora no `.gitignore` — dados operacionais reais) tinha ~22
+arquivos brutos dos 5 andares do Pietro cobrindo fev/2025–jan/2026, com formatos inconsistentes
+(CSV vs. XLSX single-andar vs. XLSX multi-andar) e MUITA sobreposição de período entre arquivos
+(inclusive 3 cópias idênticas de `Pietro_jun24-jul25.xlsx`). Consolidei por andar aplicando uma
+cadeia de prioridade cronológica (arquivo mais recente/mais confiável vence em caso de conflito
+de timestamp) e apliquei o fix de vírgula-decimal acima nos XLSX afetados. Descartei
+`PIETRO_*ANDAR.xlsx`/`_out25.xlsx` inteiros por serem 100% redundantes com os CSVs
+`{andar}_pietro_Gráfico...csv` (que cobrem jun/2025–jan/2026 de forma limpa, sem o bug).
+Resultado: série contínua por andar sem duplicatas, sem sobreposição com os dados já no banco
+(que começam em fev/2026 para os andares 3–6 e jul/2026 para o 2º Andar — sem gap coberto por
+nenhum dos dois, jan–fev/2026 continua sem dado). Gerados 54 arquivos `.xlsx` em
+`graficos_pra_alterar/organizado_para_upload/` (`PIETRO_{andar}ANDAR_{ano}-{mês}.xlsx`), um por
+andar×mês, já no formato exato que `/api/upload_xlsx` espera (colunas `Time stamp`,
+`Temperatura Ambiente`, `Umidade Ambiente`) — faltando só o upload manual pela tela
+Gerenciar → Sensores (o *guess* de sensor pelo nome do arquivo deve sugerir certo, mas confirme
+antes de enviar).
 
 ---
 
