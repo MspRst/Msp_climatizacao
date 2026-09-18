@@ -5,7 +5,7 @@
 > (dívida técnica catalogada — dead code, duplicações, recomendações). Este arquivo é sobre
 > **como o código está organizado hoje e por que**.
 
-Última atualização: 2026-09-17 · Branch: `main` — ver §3 para o histórico de commits recente
+Última atualização: 2026-09-18 · Branch: `main` — ver §3 para o histórico de commits recente
 
 ---
 
@@ -52,7 +52,7 @@ Ver §6 para as armadilhas disso.
 | `static/api.js` | ~180 | Camada de dados: objeto `API`, `getFilters()`, `loadTab()`, `loadAll()`, boot |
 | `static/ui.js` | ~345 | Abas, filtros (agrupados por **prédio + andar**, ver §4), chips de sensores, toasts |
 | `static/charts.js` | ~1820 | Todos os gráficos do dashboard (mensal, sazonal, horário, alertas, orvalho, heatmap) |
-| `static/admin.js` | ~3440 | Aba Gerenciar + Relatório: CRUD, importação CSV/XLSX, geração do relatório completo |
+| `static/admin.js` | ~3625 | Aba Gerenciar + Relatório: CRUD, importação CSV/XLSX, geração do relatório completo |
 
 ---
 
@@ -76,6 +76,12 @@ recente/específico:
    Pietro`** — segunda tarefa da mesma sessão, ver §9 "Resolvido em 2026-09-14".
 
 Dali em diante, o hábito passa a ser: **commitar ao final de cada tarefa**, não deixar acumular.
+
+Sessão de 2026-09-18 (ajustes na emissão de relatórios, ver §9 "Resolvido em 2026-09-18"):
+`255af58` (conserto do checkbox de desvios + opções de sumário/térreo/gráficos mensais +
+tradução), `a8affbf` (filtro de período expositivo), e um commit seguinte com as anotações
+automáticas de início/fim de exposição — confirmar o hash mais recente com `git log --oneline
+-5` se precisar apontar pra um específico.
 
 ---
 
@@ -267,30 +273,102 @@ dedicado a "gerar relatório", só as APIs de leitura normais chamadas várias v
   de cada ocorrência (`o.descricao`) não é renderizada; tipo, datas, sensores afetados e
   responsável continuam aparecendo. É a única diferença — decidida comparando byte a byte
   os PDFs de exemplo que a Yasmin forneceu.
-- Checkboxes independentes por seção: capa, guia, tabela comparativa geral,
-  **"Tendência de Conformidade Comparativa" (página global, canvas `canvas_global_monthly`)**,
-  páginas de sensor, gráficos, ocorrências, tabela de evolução mensal *por sensor*, análise
-  de desvios. As duas últimas eram controladas pelo MESMO checkbox até esta sessão — agora
-  `includeGlobalTrend` (página global) e `includeMonthly` (tabela por sensor) são
-  independentes.
-- Idioma PT/EN via `I18N`.
+- **Idioma PT/EN** via `I18N` (`getReportContentSettings().lang`). Ver "Tradução" abaixo —
+  não é só trocar `I18N[lang]`, tem gente-de-fora do dicionário (datas, tooltips, canvas).
+- **Filtro de período expositivo** (`repExpoFiltro`, seletor de 3 estados): `todos` (padrão) |
+  `expo` (só em exposição) | `nao_expo` (só sem exposição). Ver "Filtro de período expositivo"
+  abaixo — **não é cosmético**, filtra a série de cada sensor na origem (`sensorsData` map em
+  `openReportWindow`) e cascateia pra tudo: gráfico, % conformidade, médias, desvios, mensal.
+- Checkboxes independentes por seção: capa, guia, **sumário/índice** (`includeIndex` —
+  criado nesta sessão; antes existia no código mas não tinha controle na tela, ficava sempre
+  incluído), tabela comparativa geral, "Tendência de Conformidade Comparativa" (página global,
+  canvas `canvas_global_monthly`), páginas de sensor, gráficos, **— incluir linha do Térreo**
+  (`includeTerreo`, sub-item de "Gráficos"), **— dividir gráficos por mês**
+  (`splitChartsByMonth`, sub-item de "Gráficos" — ver "Gráficos mês a mês" abaixo),
+  **— marcar início/fim de cada exposição** (`markExpoBoundaries`, sub-item de "Gráficos",
+  ligado por padrão — ver "Anotações verticais" abaixo), ocorrências, tabela de evolução
+  mensal *por sensor*, **análise de desvios** (`includeDeviations` — existia desde antes mas
+  não fazia nada; o valor era lido em `getReportContentSettings()` só nunca chegava a ser
+  aplicado em `openReportWindow()`, corrigido nesta sessão).
+
+### Anotações verticais no gráfico
+Duas fontes, mesmo mecanismo de desenho (`customEventPlugin`, dentro de `mkChart`) — os itens
+de `_zm.customMarkers` só precisam de `{date, label}` (mais `color` opcional, padrão roxo
+`#8b5cf6`):
+- **Manuais**: `addCustomMarkerRow()`/`repCustomMarkersWrap` no formulário — o usuário digita
+  data+descrição livre. Viram `contentSettings.customMarkers`.
+- **Automáticas de início/fim de exposição** (`markExpoBoundaries`, criado nesta sessão):
+  `buildExpoBoundaryMarkers()` (dentro do `<script>` embutido do relatório) percorre
+  `periodoExpo`/`periodoExpoNomes` — a MESMA varredura de trechos contínuos que o
+  `expoShadingPlugin` já fazia pra desenhar a faixa vermelha — e gera um marcador "INÍCIO —
+  NOME"/"FIM — NOME" (cor vermelha `#E30613`, pra diferenciar das manuais) nas bordas de cada
+  trecho "em exposição". Concatenados com as manuais antes de montar `_zm.customMarkers`, então
+  aparecem juntos no mesmo gráfico sem conflito.
+- **Bug corrigido nesta sessão**: `customEventPlugin` descartava silenciosamente qualquer
+  marcador com data ANTERIOR ao primeiro ponto do gráfico daquele sensor específico (sem aviso
+  nenhum) — só marcadores com data POSTERIOR ao último ponto eram "grampeados" na borda. Isso é
+  exatamente o caso comum de marcar o **início** de uma exposição que começou antes do período
+  selecionado no relatório. Agora os dois lados grampeiam na borda mais próxima em vez de um
+  lado sumir. Se voltar a acontecer de "só uma anotação aparecer", primeiro suspeitar disso de
+  novo: comparar a data do marcador com o intervalo de dados daquele sensor específico (cada
+  sensor pode ter uma primeira/última leitura diferente dentro do mesmo período de relatório).
 
 ### Gráficos de sensor — rótulo de período expositivo
 `expoShadingPlugin` (dentro de `mkChart`, dentro do HTML gerado) desenha, para cada trecho
 contínuo do eixo X, **"EM EXPOSIÇÃO"** (+ nome da exposição, se couber) ou
 **"SEM EXPOSIÇÃO"** — com fundo clarinho atrás do texto para legibilidade. O rótulo fica
 colado na base do gráfico (acima da faixa vermelha, entre as curvas de dados e a legenda
-que vem logo abaixo do canvas) — não no topo, onde atrapalhava a leitura das curvas.
+que vem logo abaixo do canvas) — não no topo, onde atrapalhava a leitura das curvas. Só
+rastreia transição 0/1 (em exposição ou não), não troca de nome dentro do mesmo trecho — se
+duas exposições diferentes forem consecutivas sem gap, viram um único trecho sombreado (mesma
+limitação vale pras anotações automáticas de início/fim, que usam a mesma varredura).
 
-### Coisas fáceis de quebrar de novo aqui
-- O payload embutido no relatório (`chartPayload` → `dataJSON` → `var DATA = JSON.parse(...)`
-  dentro do `<script>` gerado) só leva os campos que forem explicitamente destructurados —
-  **já aconteceu** de faltar `monthly` e `sensor` nesse payload e a página de tendência
-  global ficar em branco silenciosamente (sem erro no console, só sem dados). Se adicionar
-  um novo gráfico global que dependa de dado por sensor, confirme que o campo está no
-  `chartPayload`.
-- A regra "quem usa MASP vs. Bizot no padrão Híbrido" vem de `sensores.padrao_hibrido`
-  (`'masp'` | `'bizot'`), editável em Gerenciar → Sensores — ver §9 "Resolvido em 2026-09-15".
+### Gráficos mês a mês (`splitChartsByMonth`, criado nesta sessão)
+Desligado por padrão. Ligado, cada sensor passa a ter uma seção de Temperatura e uma de
+Umidade com **um gráfico por mês** (tamanho normal, não miniatura) em vez de um gráfico único
+comprimindo o período inteiro em `MAX_PTS` (800) pontos — cada mês subamostra
+independentemente, então ganha resolução própria. Implementado em duas frentes:
+- **Geração** (`sensorsData` map): agrupa `serie` por `YYYY-MM`, gera `monthlySeries`
+  (subamostra + alinha Térreo por mês).
+- **Payload/render** (`chartPayload` → `monthlyCharts`, `DATA.forEach` no script embutido):
+  quando `d.monthlyCharts.length` existe, chama `mkChart` uma vez por mês (canvas
+  `${safeId}_T_${mesKey}`/`_R_${mesKey}`) em vez de uma vez pro período inteiro. Ocorrências e
+  marcadores manuais são filtrados por mês (`substring(0,7) === mc.mes`) pra não vazar um
+  evento de um mês pro gráfico de outro.
+
+### Filtro de período expositivo (`expoFiltro`, criado nesta sessão)
+Seletor de 3 estados (`todos` | `expo` | `nao_expo`). Aplicado no **início** do `sensorsData`
+map, antes de qualquer cálculo — filtra `serie` (renomeada `rawSerie` no destructuring) por
+`periodo_expositivo`, e essa `serie` filtrada é usada daí pra frente em tudo: `serieSub`,
+`monthlySeries`, conformidade, tabela mensal, análise de desvios. Duas armadilhas resolvidas:
+- `stats` vem **pré-calculado pelo backend pro período inteiro sem filtro** — com o filtro
+  ativo, força recálculo client-side (`avgOf()` pra T/UR média, `confPadrao`/`confT`/`confUR`
+  em vez dos `stats.conf_total_*` prontos) — senão os números do relatório continuariam do
+  período inteiro mesmo com o gráfico filtrado.
+- `monthly` (tabela de evolução mensal) tem o mesmo problema com `mensalAPI` — força
+  `calcMonthly(serie, ...)` (client-side, já filtrado) em vez do array pronto da API quando
+  `expoFiltroAtivo`.
+- Independente do modo mês a mês — combina com os dois ligados ao mesmo tempo.
+- Se um sensor não tiver NENHUM dado que bata com o filtro no período (ex.: filtrar "Só Em
+  Exposição" num sensor que nunca teve exposição), a página dele no relatório ainda aparece,
+  só que com estatísticas em branco (`–`) e gráfico vazio — não é omitida automaticamente.
+
+### Tradução (PT/EN) — pontos fáceis de esquecer
+`I18N.pt`/`I18N.en` (mesmas chaves nos dois, conferido) cobre a maior parte, mas várias coisas
+no relatório **não passam pelo dicionário** porque são geradas dentro do `<script>` embutido
+(roda no navegador de quem abre o relatório, não no `admin.js` que gera a string) ou usam
+`.toLocaleString('pt-BR')` fixo. Corrigido nesta sessão, mas se acrescentar texto novo no
+relatório, lembrar de checar isso de novo:
+- **Formatação de data/número**: usar a const `dateLocale` (`'pt-BR'`/`'en-US'`, definida no
+  topo de `openReportWindow`), nunca `'pt-BR'` direto.
+- **Dentro do `<script>` embutido** (`mkChart`, `expoShadingPlugin`, `customEventPlugin`,
+  `zonaPlugin`, tooltip do Chart.js, `fmtMonth` — SIM, existem DUAS funções `fmtMonth`, uma no
+  escopo externo (usada pra gerar o HTML) e outra dentro do `<script>` embutido (usada pelo
+  gráfico global mensal) — as duas precisam do mesmo tratamento de idioma): como esse bloco é
+  só texto dentro de um template literal, qualquer rótulo fixo tem que virar uma constante
+  `var L_XXX = ${JSON.stringify(lang === 'pt' ? '...' : '...')};` calculada na geração (idioma
+  fica fixo pro relatório inteiro, não muda em runtime) — todas as constantes `L_*` ficam juntas
+  logo depois do `var DATA = JSON.parse(...)`, no topo do `<script>`.
 
 ---
 
@@ -305,7 +383,45 @@ do Híbrido triplicada, faixas de conformidade hardcoded no JS — tudo isso est
 
 | # | Item | Detalhe |
 |---|---|---|
-| 1 | `admin.js` com ~3440 linhas | CRUD + parsing de CSV/XLSX + análise de não-conformidades + geração inteira do relatório. Candidato a quebra em módulos. |
+| 1 | `admin.js` com ~3625 linhas | CRUD + parsing de CSV/XLSX + análise de não-conformidades + geração inteira do relatório. Candidato a quebra em módulos. |
+
+### Resolvido em 2026-09-18
+Pedido da Yasmin: ajustes na emissão de relatórios, um tópico de cada vez, do mais simples ao
+mais complexo. Ver §8 para o detalhe técnico de cada item; resumo aqui:
+- **Checkbox "Análise de Desvios" consertado** — `getReportContentSettings()` já lia o valor
+  (`includeDeviations`) mas `openReportWindow()` nunca aplicava; a seção sempre aparecia
+  independente do checkbox. Agora `content.includeDeviations` gateia a seção de verdade.
+- **Checkbox de Sumário/Índice** (`includeIndex`) — a página já existia no código
+  (`indexPage`, rotulada "SUMÁRIO"/"TABLE OF CONTENTS") mas não tinha controle nenhum na tela,
+  sempre incluída. Adicionado o checkbox que faltava.
+- **Checkbox pra remover a linha do Térreo dos gráficos** (`includeTerreo`) — antes era tudo
+  ou nada, automático sempre que havia dado de Térreo no período. Agora dá pra desligar; a
+  flag cascateia por `temTerreo` pra legenda, estatísticas e o dado passado pro gráfico.
+- **Vazamentos de português corrigidos no relatório em inglês** — ver §8 "Tradução (PT/EN)".
+  Incluía: data de geração da capa, "Térreo" no dataset do gráfico, tooltip inteiro do
+  Chart.js, rótulos "EM/SEM EXPOSIÇÃO" desenhados no canvas, "Máx:"/"Mín:" das zonas, nomes de
+  mês abreviados no gráfico de tendência global (havia uma segunda cópia de `fmtMonth`
+  só-PT dentro do `<script>` embutido), separador de milhar (`toLocaleString`), atributo
+  `lang` do `<html>`.
+- **Gráficos mês a mês** (`splitChartsByMonth`) — nova opção, desligada por padrão. Ver §8.
+- **Filtro de período expositivo** (`expoFiltro`: todos/expo/nao_expo) — nova opção, afeta
+  gráficos E estatísticas (recalcula tudo em cima só dos dados filtrados). Ver §8.
+- **Anotações automáticas de início/fim de exposição** (`markExpoBoundaries`, ligado por
+  padrão) — usa o mesmo mecanismo de desenho das anotações manuais (`customEventPlugin`),
+  gerando marcadores a partir de `periodoExpo`/`periodoExpoNomes`. Ver §8 "Anotações
+  verticais".
+- **Bug real corrigido: anotação manual "sumia" quando a data era anterior ao início dos
+  dados daquele sensor específico** — `customEventPlugin` descartava silenciosamente esse
+  caso (só grampeava na borda quando a data era POSTERIOR ao fim); reportado pela Yasmin como
+  "adicionei duas anotações, só uma apareceu". Corrigido pra grampear nos dois lados.
+- **Deploy em produção mapeado** (ver novo §12) — a pasta de trabalho
+  (`\\192.168.0.215\masp-dashboard\`) é um compartilhamento de rede pra dentro da PRÓPRIA
+  máquina que roda o serviço `MASPDashboard` (NSSM, Windows Service) — os arquivos editados
+  aqui já são os arquivos de produção, sem passo de deploy. `git push` é só backup/histórico,
+  não aciona nada. Mudanças em `templates/*.html` só valem depois de reiniciar o serviço
+  (Jinja com `auto_reload` desligado em produção não relê `.html` sozinho); mudanças em
+  `static/*.js` já valem no próximo request (servidas direto do disco, hash de cache-busting
+  recalculado a cada request).
 
 ### Resolvido em 2026-09-15
 - **Faixas de conformidade centralizadas no backend** — `padroes_conformidade` (via
@@ -421,12 +537,60 @@ pip install -r requirements.txt   # agora inclui openpyxl
 python app.py                     # http://localhost:5000 — cria/migra o banco sozinho
 ```
 
-Variáveis: `DB_PATH`, `ACCESS_TOKEN`, `FLASK_ENV`, `PORT`. Produção via Gunicorn
-(`Procfile`), volume persistente pro `.db`.
+Variáveis: `DB_PATH`, `ACCESS_TOKEN`, `FLASK_ENV`, `PORT`. Há um `Procfile` (Gunicorn) no
+repo, mas **não é o que roda em produção hoje** — ver §12.
 
 ---
 
-## 12. Onde olhar primeiro
+## 12. Deploy em produção (descoberto/confirmado em 2026-09-18)
+
+O dashboard "de verdade" (o que a equipe acessa) **não** é implantado via Gunicorn/Procfile —
+roda como **serviço do Windows** numa VM do TI do MASP:
+
+- **Máquina**: Windows Server, IP `192.168.0.215`. Passo a passo de acesso/manutenção em
+  `PASSO-A-PASSO-DEPLOY.txt` (na raiz) — RDP com usuário Administrador, diretório
+  `C:\inetpub\www\masp-dashboard`.
+- **A pasta de trabalho deste projeto (`\\192.168.0.215\masp-dashboard\`) é um
+  compartilhamento de rede APONTANDO PRA ESSA MESMA MÁQUINA** — ou seja, editar arquivos aqui
+  edita os arquivos de produção diretamente, sem precisar copiar/publicar nada.
+- **Serviço**: `MASPDashboard` (nome de exibição "MASP Dashboard - Monitoramento
+  Climatização"), gerenciado via **NSSM**. Comandos (rodar no servidor, PowerShell como
+  Administrador): `nssm restart|stop|start MASPDashboard`. Dá pra checar/reiniciar
+  remotamente sem RDP com `Get-Service -ComputerName 192.168.0.215 -Name MASPDashboard` /
+  `(Get-Service -ComputerName 192.168.0.215 -Name MASPDashboard).Stop()` +`.Start()` — só
+  funciona se a conta do Windows atual tiver permissão de admin remota na VM; `Restart-Service`
+  **não aceita** `-ComputerName` (usar o objeto `ServiceController` + `.Stop()`/`.Start()`, ou
+  `sc.exe \\192.168.0.215 ...`).
+- **Acesso**: `http://climatizacao.masp.org.br:5000` (ou porta 80), `http://192.168.0.215:5000`,
+  `http://localhost:5000` (na própria VM).
+
+### `git push` NÃO faz deploy
+Não existe pipeline/CI configurado (`.github/` no repo só tem instruções de extensão VS Code,
+nada de deploy). Dar push manda só um backup/histórico pro GitHub — o serviço continua rodando
+os arquivos que já estavam no disco da VM. Como esses arquivos são os mesmos que este projeto
+edita diretamente (ver acima), isso normalmente não importa — mas **não confundir "dei push"
+com "está no ar"**.
+
+### Templates Jinja exigem reiniciar o serviço; JS não
+- `templates/*.html` (`index.html`, `modals.html`): Flask/Jinja cacheia o template compilado em
+  memória; em produção (`debug=False`) o `auto_reload` fica desligado por padrão, então o
+  processo **não percebe sozinho** que o `.html` mudou no disco — só relê no próximo restart.
+  Sintoma: usuária reclama que deu Ctrl+F5 e nada mudou — não é cache do navegador, é cache do
+  processo no servidor.
+- `static/*.js` (`api.js`/`ui.js`/`charts.js`/`admin.js`): servidos direto do disco a cada
+  request (rota `/static/api.js` tem handler próprio com ETag; os outros pelo `static_folder`
+  padrão do Flask), e o hash de cache-busting (`_combined_hash` em `app.py`, injetado em
+  `index()`) é recalculado a cada request — mudança nesses arquivos já vale no próximo load da
+  página, **sem precisar reiniciar o serviço**. (Mas se a mudança também mexeu em
+  `templates/index.html` — ex.: um checkbox novo — precisa reiniciar mesmo assim pra esse HTML
+  aparecer.)
+- **Regra prática**: depois de editar `templates/*.html`, sempre reiniciar o serviço antes de
+  pedir pra alguém testar. Depois de editar só `static/*.js`, só pedir refresh normal já deve
+  bastar — mas reiniciar não faz mal nenhum e elimina a dúvida.
+
+---
+
+## 13. Onde olhar primeiro
 
 | Quero… | Vá para |
 |---|---|
@@ -435,7 +599,8 @@ Variáveis: `DB_PATH`, `ACCESS_TOKEN`, `FLASK_ENV`, `PORT`. Produção via Gunic
 | Entender por que uma exposição não está sendo reconhecida | `_expositivo_para`/`_normalizar_texto` em `app.py` — checar espaço duplo, `º` vs `°`, `predio` da exposição |
 | Adicionar um gráfico no dashboard | `charts.js` + canvas no `templates/index.html` |
 | Adicionar um formato de importação novo | Ver §5 — decidir se cabe no parser CSV existente ou merece endpoint próprio como `/api/upload_xlsx` |
-| Mexer no relatório (conteúdo, seções, interno/externo) | `admin.js` → `openReportWindow()`, `getReportContentSettings()`; checkboxes em `templates/index.html` |
+| Mexer no relatório (conteúdo, seções, interno/externo, filtros, gráficos mês a mês, anotações) | `admin.js` → `openReportWindow()`, `getReportContentSettings()`, `mkChart()`; checkboxes/seletores em `templates/index.html`; ver §8 |
 | Mexer em filtros | `ui.js` → `populateFilters()`; `api.js` → `getFilters()`; `app.py` → `build_filtros()` |
 | Entender conformidade | `conformidade.py` |
 | Entender desvios | `/api/desvios-preview` em `app.py` (cálculo on-the-fly, é o único caminho real — `desvios.py`/`/api/desvios` foram removidos por serem código morto) |
+| Testar uma mudança e não sabe por que não aparece no site | §12 — provavelmente falta reiniciar o serviço `MASPDashboard` |

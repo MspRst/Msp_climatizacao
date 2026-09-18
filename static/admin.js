@@ -325,6 +325,7 @@ function getReportContentSettings() {
     includeCharts: document.getElementById('repIncludeCharts')?.checked ?? true,
     includeTerreo: document.getElementById('repIncludeTerreo')?.checked ?? true,
     splitChartsByMonth: document.getElementById('repMonthlyCharts')?.checked ?? false,
+    markExpoBoundaries: document.getElementById('repMarkExpoBoundaries')?.checked ?? true,
     expoFiltro: document.querySelector('#repExpoFiltro .seg-btn.active')?.dataset.expofiltro || 'todos',
     includeOccurrences: document.getElementById('repIncludeOccurrences')?.checked ?? true,
     includeMonthly: document.getElementById('repIncludeMonthly')?.checked ?? true,
@@ -511,6 +512,7 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
     // Gráficos de sensor mês a mês em vez de um único gráfico comprimindo o período inteiro —
     // desligado por padrão (contentSettings.splitChartsByMonth só vem true se o checkbox marcar).
     splitChartsByMonth: contentSettings.splitChartsByMonth === true,
+    markExpoBoundaries: contentSettings.markExpoBoundaries !== false,
     // Filtro de período expositivo: 'todos' (padrão) | 'expo' (só em exposição) | 'nao_expo'
     // (só sem exposição) — restringe gráficos E estatísticas, não só a exibição.
     expoFiltro: contentSettings.expoFiltro === 'expo' || contentSettings.expoFiltro === 'nao_expo' ? contentSettings.expoFiltro : 'todos',
@@ -1384,6 +1386,32 @@ var L_TERREO_REF = ${JSON.stringify(lang === 'pt' ? 'Térreo (ref): ' : 'Ground 
 var L_TERREO_LABEL = ${JSON.stringify(lang === 'pt' ? 'Térreo' : 'Ground Floor')};
 var L_EM_EXPOSICAO = ${JSON.stringify(lang === 'pt' ? 'EM EXPOSIÇÃO' : 'ON EXHIBITION')};
 var L_SEM_EXPOSICAO = ${JSON.stringify(lang === 'pt' ? 'SEM EXPOSIÇÃO' : 'NOT ON EXHIBITION')};
+var L_INICIO_EXPO = ${JSON.stringify(lang === 'pt' ? 'INÍCIO' : 'START')};
+var L_FIM_EXPO = ${JSON.stringify(lang === 'pt' ? 'FIM' : 'END')};
+var MARK_EXPO_BOUNDARIES = ${JSON.stringify(content.markExpoBoundaries !== false)};
+
+// Gera anotações verticais automáticas no início/fim de cada trecho "em exposição" —
+// mesmo mecanismo das anotações manuais (customEventPlugin), só que geradas a partir de
+// periodoExpo/periodoExpoNomes em vez de digitadas pelo usuário. Reaproveita a mesma
+// varredura de trechos contínuos do expoShadingPlugin.
+function buildExpoBoundaryMarkers(periodoExpo, periodoExpoNomes, rawLabelsArr) {
+  var markers = [];
+  if (!periodoExpo || !periodoExpo.length) return markers;
+  var i = 0;
+  while (i < periodoExpo.length) {
+    var emExpo = periodoExpo[i] === 1;
+    var s = i;
+    while (i < periodoExpo.length && (periodoExpo[i] === 1) === emExpo) i++;
+    var endIdx = Math.min(i - 1, periodoExpo.length - 1);
+    if (endIdx < s) endIdx = s;
+    if (emExpo) {
+      var nome = (periodoExpoNomes && periodoExpoNomes[s]) ? ' — ' + periodoExpoNomes[s].toUpperCase() : '';
+      markers.push({ date: rawLabelsArr[s], label: L_INICIO_EXPO + nome, color: '#E30613' });
+      markers.push({ date: rawLabelsArr[endIdx], label: L_FIM_EXPO + nome, color: '#E30613' });
+    }
+  }
+  return markers;
+}
 
 var zonaPlugin={id:'zonaPlugin',afterDraw:function(chart){
   var ds0=chart.data.datasets[0];if(!ds0||!ds0._zm)return;
@@ -1423,10 +1451,13 @@ function mkChart(id,color,sensorData,rawLabels,unit,zMin,zMax,terreoData,ocorrs,
   var yMin = (customMin !== null && customMin !== "") ? parseFloat(customMin) : (unit==='°C' ? 15 : 30);
   var yMax = (customMax !== null && customMax !== "") ? parseFloat(customMax) : (unit==='°C' ? 35 : 100);
 
+  var expoBoundaryMarkers = MARK_EXPO_BOUNDARIES ? buildExpoBoundaryMarkers(periodoExpo, periodoExpoNomes, rawLabels) : [];
+  var allMarkers = (customMarkers||[]).concat(expoBoundaryMarkers);
+
   var datasets = [{
     label:'Sensor', data:sensorData, borderColor:color, borderWidth:1.5, 
     pointRadius: 0, pointHoverRadius: 5, tension:0.75, fill:false,
-    _zm:{zMin:zMin,zMax:zMax,unit:unit,rawLabels:rawLabels,ocorrs:ocorrs||[], customMarkers: customMarkers||[]}
+    _zm:{zMin:zMin,zMax:zMax,unit:unit,rawLabels:rawLabels,ocorrs:ocorrs||[], customMarkers: allMarkers}
   }];
   
   if(terreoData && terreoData.length) datasets.push({label:L_TERREO_LABEL, data:terreoData, borderColor:'#94a3b8', borderWidth: 1, borderDash:[6, 4], pointRadius:0, fill:false, tension: 0.4, spanGaps: true});
@@ -1510,14 +1541,17 @@ function mkChart(id,color,sensorData,rawLabels,unit,zMin,zMax,terreoData,ocorrs,
     ctx.save();
     ds0._zm.customMarkers.forEach(function(m, idx) {
       var ts=m.date.replace('T',' ').substring(0,16);
+      // Marcadores fora do intervalo do gráfico são GRAMPEADOS na borda mais próxima (início
+      // ou fim) em vez de descartados — uma anotação de início de exposição anterior ao
+      // período do relatório simplesmente sumia antes, sem aviso nenhum.
       var xIdx=rawLabels.findIndex(function(l){return l.substring(0,16)>=ts;});
       if(xIdx===-1) xIdx=rawLabels.length-1;
-      if(xIdx===0 && rawLabels[0].substring(0,16)>ts) return; 
       var px=xs.getPixelForValue(xIdx);
-      
-      ctx.strokeStyle='#8b5cf6'; ctx.lineWidth=2; ctx.setLineDash([4,3]);
+      var color = m.color || '#8b5cf6';
+
+      ctx.strokeStyle=color; ctx.lineWidth=2; ctx.setLineDash([4,3]);
       ctx.beginPath(); ctx.moveTo(px,ca.top); ctx.lineTo(px,ca.bottom); ctx.stroke();
-      ctx.setLineDash([]); ctx.fillStyle='#8b5cf6'; ctx.font='bold 10px monospace';
+      ctx.setLineDash([]); ctx.fillStyle=color; ctx.font='bold 10px monospace';
       var txtW=ctx.measureText(m.label).width;
       var tX = (px+txtW+10 > ca.right) ? px - txtW - 5 : px + 5;
       var tY = ca.top + 15 + (idx*12 % 36); 
