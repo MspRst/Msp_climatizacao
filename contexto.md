@@ -379,6 +379,24 @@ relatório, lembrar de checar isso de novo:
   `var L_XXX = ${JSON.stringify(lang === 'pt' ? '...' : '...')};` calculada na geração (idioma
   fica fixo pro relatório inteiro, não muda em runtime) — todas as constantes `L_*` ficam juntas
   logo depois do `var DATA = JSON.parse(...)`, no topo do `<script>`.
+- **Auditoria completa feita em 2026-09-18** (varredura de toda `openReportWindow`, não só o
+  ponto reportado): faltavam os títulos dos gráficos de cada sensor — `<span class="chart-lbl">`
+  tinha `"Temperatura (°C)"`/`"Umidade Relativa (%)"` escritos direto, sem passar por `tx.` nem
+  ternário de `lang`. Virou `tx.temp_chart_title`/`tx.ur_chart_title` (chaves novas no `I18N`).
+  De quebra, padronizei a abreviação de UR pro inglês: os cards e a tabela de evolução mensal
+  usavam `"UR"` fixo mesmo em inglês — inconsistente com o resto do relatório, que já usa "RH"
+  (Relative Humidity) em outros textos em inglês. Viraram `tx.t_abbr`/`tx.ur_abbr` (`"T"/"UR"`
+  em PT, `"T"/"RH"` em EN). Conferido de novo que `I18N.pt`/`I18N.en` têm exatamente as mesmas
+  chaves (105 cada) via script Node comparando as duas listas — útil pra rodar de novo se
+  desconfiar de outro texto sumindo ("undefined" na tela é sinal de chave faltando num dos dois
+  idiomas, não de esquecimento de `tx.`).
+- **Método pra achar vazamento de PT no relatório em EN** (útil pra próxima vez): gerar o
+  relatório com `lang: 'en'` e procurar por palavras com acento (a maioria do vocabulário PT
+  tem acento) OU por palavras específicas sem acento que também vazam fácil por não "parecerem"
+  suspeitas — já aconteceu com `Umidade` (sem acento). Um grep no trecho de
+  `openReportWindow` por `[^ -~]` (qualquer caractere não-ASCII) pega a maioria; complementar
+  com um grep por palavras-chave conhecidas (`Temperatura`, `Umidade`, `Sensores`, `Nenhum`,
+  etc.) pra pegar o resto.
 
 ---
 

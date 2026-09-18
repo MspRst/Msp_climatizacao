@@ -1001,7 +1001,7 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
     <div class="side-block">
       <div class="block-title">${tx.monthly_evolution_label} — ${thresh.label}</div>
       <table class="monthly-table">
-        <thead><tr><th>${tx.month}</th><th>N</th><th class="th-padrao">${thresh.label}</th><th>T</th><th>UR</th></tr></thead>
+        <thead><tr><th>${tx.month}</th><th>N</th><th class="th-padrao">${thresh.label}</th><th>${tx.t_abbr}</th><th>${tx.ur_abbr}</th></tr></thead>
         <tbody>${monthly.map(m=>`
           <tr>
             <td>${fmtMonth(m.mes)}</td>
@@ -1093,12 +1093,12 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
         <span style="font-size: 10px; color: #8c8278; display: block; margin-top: 5px; line-height: 1.2; text-transform: uppercase; letter-spacing: 0.5px;">${tx.inside_range}</span>
     </div>
     <div class="stat-card">
-        <span class="stat-lbl">T ${thresh.tMin}–${thresh.tMax}°C</span>
+        <span class="stat-lbl">${tx.t_abbr} ${thresh.tMin}–${thresh.tMax}°C</span>
         <span class="stat-val ${cls(ct)}">${pct(ct)}</span>
         <span style="font-size: 10px; color: #8c8278; display: block; margin-top: 5px; line-height: 1.2; text-transform: uppercase; letter-spacing: 0.5px;">${tx.inside_range}</span>
     </div>
     <div class="stat-card">
-        <span class="stat-lbl">UR ${thresh.urMin}–${thresh.urMax}%</span>
+        <span class="stat-lbl">${tx.ur_abbr} ${thresh.urMin}–${thresh.urMax}%</span>
         <span class="stat-val ${cls(cur)}">${pct(cur)}</span>
         <span style="font-size: 10px; color: #8c8278; display: block; margin-top: 5px; line-height: 1.2; text-transform: uppercase; letter-spacing: 0.5px;">${tx.inside_range}</span>
     </div>
@@ -1106,7 +1106,7 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
 ${content.includeCharts ? `
       <div class="chart-block">
         <div class="chart-lbl-row">
-          <span class="chart-lbl">Temperatura (°C)</span>
+          <span class="chart-lbl">${tx.temp_chart_title}</span>
           <span class="chart-legend">
             <span class="leg-item"><svg width="22" height="10"><line x1="0" y1="5" x2="22" y2="5" stroke="#c0392b" stroke-width="2"/></svg>${escapeHtml(sensor)}</span>
             ${terreoLegend}
@@ -1124,7 +1124,7 @@ ${content.includeCharts ? `
       </div>
       <div class="chart-block">
         <div class="chart-lbl-row">
-          <span class="chart-lbl">Umidade Relativa (%)</span>
+          <span class="chart-lbl">${tx.ur_chart_title}</span>
           <span class="chart-legend">
             <span class="leg-item"><svg width="22" height="10"><line x1="0" y1="5" x2="22" y2="5" stroke="#1d4ed8" stroke-width="2"/></svg>${escapeHtml(sensor)}</span>
             ${terreoLegend}
@@ -3486,6 +3486,10 @@ const I18N = {
     gen_conf: "Conf. Geral",
     temp_avg: "T Média",
     ur_avg: "UR Média",
+    temp_chart_title: "Temperatura (°C)",
+    ur_chart_title: "Umidade Relativa (%)",
+    t_abbr: "T",
+    ur_abbr: "UR",
     status: "Status",
     best_perf: "Melhor desempenho",
     worst_perf: "Pior desempenho",
@@ -3589,6 +3593,10 @@ const I18N = {
     gen_conf: "Gen. Conf.",
     temp_avg: "Average T",
     ur_avg: "Average RH",
+    temp_chart_title: "Temperature (°C)",
+    ur_chart_title: "Relative Humidity (%)",
+    t_abbr: "T",
+    ur_abbr: "RH",
     status: "Status",
     best_perf: "Best performance",
     worst_perf: "Worst performance",
