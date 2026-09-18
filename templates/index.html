@@ -686,6 +686,20 @@
     <button class="seg-btn" data-lang="en" onclick="selectSeg(this)">🇺🇸 English</button>
   </div>
 </div>
+
+          <div class="fld" style="margin-bottom: 20px;">
+  <label style="font-size:.65rem;color:var(--gray-500)">Filtro de Período Expositivo</label>
+  <div class="seg-ctrl" id="repExpoFiltro">
+    <button class="seg-btn active" data-expofiltro="todos" onclick="selectSeg(this)">Tudo</button>
+    <button class="seg-btn" data-expofiltro="expo" onclick="selectSeg(this)">Só Em Exposição</button>
+    <button class="seg-btn" data-expofiltro="nao_expo" onclick="selectSeg(this)">Só Sem Exposição</button>
+  </div>
+  <p style="font-size:.72rem;color:var(--gray-400);margin-top:6px;line-height:1.5">
+    Restringe <strong>gráficos e estatísticas</strong> (conformidade, médias, análise de desvios,
+    evolução mensal) só aos trechos em que o espaço estava — ou não estava — em exposição. O eixo
+    do tempo dos gráficos mostra só os trechos filtrados, emendados (sem os vãos do período excluído).
+  </p>
+</div>
           
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
             <div style="padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--gray-50)">

@@ -325,6 +325,7 @@ function getReportContentSettings() {
     includeCharts: document.getElementById('repIncludeCharts')?.checked ?? true,
     includeTerreo: document.getElementById('repIncludeTerreo')?.checked ?? true,
     splitChartsByMonth: document.getElementById('repMonthlyCharts')?.checked ?? false,
+    expoFiltro: document.querySelector('#repExpoFiltro .seg-btn.active')?.dataset.expofiltro || 'todos',
     includeOccurrences: document.getElementById('repIncludeOccurrences')?.checked ?? true,
     includeMonthly: document.getElementById('repIncludeMonthly')?.checked ?? true,
     includeGlobalTrend: document.getElementById('repIncludeGlobalTrend')?.checked ?? true,
@@ -510,6 +511,9 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
     // Gráficos de sensor mês a mês em vez de um único gráfico comprimindo o período inteiro —
     // desligado por padrão (contentSettings.splitChartsByMonth só vem true se o checkbox marcar).
     splitChartsByMonth: contentSettings.splitChartsByMonth === true,
+    // Filtro de período expositivo: 'todos' (padrão) | 'expo' (só em exposição) | 'nao_expo'
+    // (só sem exposição) — restringe gráficos E estatísticas, não só a exibição.
+    expoFiltro: contentSettings.expoFiltro === 'expo' || contentSettings.expoFiltro === 'nao_expo' ? contentSettings.expoFiltro : 'todos',
     // 'externo' oculta a descrição em texto livre das ocorrências (onde entram detalhes
     // operacionais, nomes de fornecedores etc.) — mantém tipo, datas, sensores e responsável.
     externo: contentSettings.visibilidade === 'externo',
@@ -599,7 +603,23 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
 
   const temTerreo = terreoDados.length > 0 && content.includeTerreo;
 
-  const sensorsData = allData.map(({ sensor, serie, stats, thresh, ocorrencias, mensalAPI, padraoHibrido }) => {
+  const sensorsData = allData.map(({ sensor, serie: rawSerie, stats: rawStats, thresh, ocorrencias, mensalAPI, padraoHibrido }) => {
+
+    // Filtro de período expositivo (repExpoFilter) — restringe TUDO (gráficos e estatísticas)
+    // aos trechos em que o espaço estava (ou não estava) em exposição. Aplicado aqui, na
+    // origem dos dados do sensor, pra cascatear automaticamente pra conformidade, tabela
+    // mensal, análise de desvios e gráficos sem precisar repetir o filtro em cada um.
+    const expoFiltroAtivo = content.expoFiltro !== 'todos';
+    const serie = expoFiltroAtivo
+      ? rawSerie.filter(r => (Number(r.periodo_expositivo) === 1) === (content.expoFiltro === 'expo'))
+      : rawSerie;
+
+    // stats vem pré-calculado pelo backend pro período INTEIRO sem filtro — com o filtro
+    // ativo, T média/UR média precisam ser recalculadas em cima da série já filtrada.
+    const avgOf = arr => arr.length ? +(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1) : null;
+    const stats = expoFiltroAtivo
+      ? { ...rawStats, temp_media: avgOf(serie.map(r=>r.temperatura).filter(v=>v!=null)), ur_media: avgOf(serie.map(r=>r.umidade).filter(v=>v!=null)) }
+      : rawStats;
 
     // LÓGICA DO PADRÃO HÍBRIDO — qual sensor usa MASP vs. Bizot vem de sensores.padrao_hibrido
     // (editável em Gerenciar → Sensores), não mais de um regex sobre o nome do sensor.
@@ -609,9 +629,10 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
     }
     const effectiveThresh = { ...p, equipment: thresh.equipment, notas: thresh.notas };
 
-    // Recalcula a conformidade 
+    // Recalcula a conformidade — com o filtro de exposição ativo, sempre recalcula em cima
+    // da série já filtrada (os números pré-calculados do backend são pro período inteiro).
     let conf, ct, cur;
-    if (padrao === 'hibrido' || isCustom || !stats || !Object.keys(stats).length) {
+    if (padrao === 'hibrido' || isCustom || !stats || !Object.keys(stats).length || expoFiltroAtivo) {
       conf = confPadrao(serie, effectiveThresh);
       ct   = confT(serie, effectiveThresh);
       cur  = confUR(serie, effectiveThresh);
@@ -627,7 +648,7 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
 
     // Calcula as tabelas mensais
     let monthly;
-    if (mensalAPI?.length && padrao !== 'hibrido' && !isCustom) {
+    if (mensalAPI?.length && padrao !== 'hibrido' && !isCustom && !expoFiltroAtivo) {
       monthly = mensalAPI.map(r => ({
         mes:  r.mes,
         n:    r.medicoes,
