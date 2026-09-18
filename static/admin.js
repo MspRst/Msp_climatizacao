@@ -1406,8 +1406,17 @@ function buildExpoBoundaryMarkers(periodoExpo, periodoExpoNomes, rawLabelsArr) {
     if (endIdx < s) endIdx = s;
     if (emExpo) {
       var nome = (periodoExpoNomes && periodoExpoNomes[s]) ? ' — ' + periodoExpoNomes[s].toUpperCase() : '';
-      markers.push({ date: rawLabelsArr[s], label: L_INICIO_EXPO + nome, color: '#E30613' });
-      markers.push({ date: rawLabelsArr[endIdx], label: L_FIM_EXPO + nome, color: '#E30613' });
+      // Só marca "início" se o trecho realmente começou dentro do período mostrado (tem um
+      // ponto "sem exposição" logo antes, no próprio gráfico) — se já estava em exposição no
+      // primeiro dado do período, a exposição pode ter começado antes; não afirma uma data
+      // que não temos.
+      if (s > 0) markers.push({ date: rawLabelsArr[s], label: L_INICIO_EXPO + nome, color: '#E30613' });
+      // Idem pro "fim": só marca se o trecho realmente terminou dentro do período mostrado
+      // (tem um ponto "sem exposição" logo depois) — se a exposição ainda estava em curso no
+      // último dado do período, ela pode continuar além do intervalo do relatório (era
+      // exatamente o caso reportado: relatório de maio/2025 marcando "fim" no último dia do
+      // mês numa exposição que seguia depois de maio).
+      if (endIdx < periodoExpo.length - 1) markers.push({ date: rawLabelsArr[endIdx], label: L_FIM_EXPO + nome, color: '#E30613' });
     }
   }
   return markers;

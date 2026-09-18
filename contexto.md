@@ -304,6 +304,16 @@ de `_zm.customMarkers` só precisam de `{date, label}` (mais `color` opcional, p
   NOME"/"FIM — NOME" (cor vermelha `#E30613`, pra diferenciar das manuais) nas bordas de cada
   trecho "em exposição". Concatenados com as manuais antes de montar `_zm.customMarkers`, então
   aparecem juntos no mesmo gráfico sem conflito.
+  **Não marca a borda quando ela é só um limite dos DADOS, não um limite real da exposição** —
+  `buildExpoBoundaryMarkers()` só emite "INÍCIO" se `s > 0` (tinha um ponto "sem exposição"
+  logo antes, dentro do próprio período mostrado) e só emite "FIM" se `endIdx <
+  periodoExpo.length - 1` (idem, logo depois). Sem essa checagem, uma exposição que já estava
+  em curso no primeiro dado do período, ou que continuava depois do último dado do período,
+  ganhava uma marcação de "início"/"fim" falsa bem na borda do gráfico — foi o bug reportado
+  com o relatório de maio/2025 (exposição que seguia além de maio aparecia como se tivesse
+  "terminado" no fim do mês). O `expoShadingPlugin` (faixa vermelha de fundo) não tem esse
+  problema porque não afirma nada sobre início/fim, só sombreia o trecho que é "em exposição"
+  dentro do que existe de dado.
 - **Bug corrigido nesta sessão**: `customEventPlugin` descartava silenciosamente qualquer
   marcador com data ANTERIOR ao primeiro ponto do gráfico daquele sensor específico (sem aviso
   nenhum) — só marcadores com data POSTERIOR ao último ponto eram "grampeados" na borda. Isso é
