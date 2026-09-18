@@ -319,9 +319,12 @@ function getReportContentSettings() {
     visibilidade: document.querySelector('#repVisibilidade .seg-btn.active')?.dataset.visibilidade || 'interno',
     includeCover: document.getElementById('repIncludeCover')?.checked ?? true,
     includeInstructions: document.getElementById('repIncludeInstructions')?.checked ?? true,
+    includeIndex: document.getElementById('repIncludeIndex')?.checked ?? true,
     includeSummary: document.getElementById('repIncludeSummary')?.checked ?? true,
     includeSensors: document.getElementById('repIncludeSensors')?.checked ?? true,
     includeCharts: document.getElementById('repIncludeCharts')?.checked ?? true,
+    includeTerreo: document.getElementById('repIncludeTerreo')?.checked ?? true,
+    splitChartsByMonth: document.getElementById('repMonthlyCharts')?.checked ?? false,
     includeOccurrences: document.getElementById('repIncludeOccurrences')?.checked ?? true,
     includeMonthly: document.getElementById('repIncludeMonthly')?.checked ?? true,
     includeGlobalTrend: document.getElementById('repIncludeGlobalTrend')?.checked ?? true,
@@ -484,6 +487,7 @@ async function generateReport() {
 function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, contentSettings = {}) {
   const lang = contentSettings.lang || 'pt';
   const tx = I18N[lang]; // <--- Esta linha é o segredo!
+  const dateLocale = lang === 'pt' ? 'pt-BR' : 'en-US';
   const period = `${dateIni} — ${dateFim}`;
   const norma    = PADROES_NORMA[padrao] || PADROES_NORMA.bizot;
   const MAX_PTS  = 800;
@@ -498,9 +502,14 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
     includeSummary: contentSettings.includeSummary !== false,
     includeSensors: contentSettings.includeSensors !== false,
     includeCharts: contentSettings.includeCharts !== false,
+    includeTerreo: contentSettings.includeTerreo !== false,
     includeOccurrences: contentSettings.includeOccurrences !== false,
     includeMonthly: contentSettings.includeMonthly !== false,
     includeGlobalTrend: contentSettings.includeGlobalTrend !== false,
+    includeDeviations: contentSettings.includeDeviations !== false,
+    // Gráficos de sensor mês a mês em vez de um único gráfico comprimindo o período inteiro —
+    // desligado por padrão (contentSettings.splitChartsByMonth só vem true se o checkbox marcar).
+    splitChartsByMonth: contentSettings.splitChartsByMonth === true,
     // 'externo' oculta a descrição em texto livre das ocorrências (onde entram detalhes
     // operacionais, nomes de fornecedores etc.) — mantém tipo, datas, sensores e responsável.
     externo: contentSettings.visibilidade === 'externo',
@@ -517,6 +526,22 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
     const tMap = {};
     terreoSerie.forEach(r => { const k = (r.data_hora||'').substring(0,13); if (k && !tMap[k]) tMap[k] = r; });
     return sensorSerie.map(r => tMap[(r.data_hora||'').substring(0,13)] || null);
+  }
+
+  // Compartilhados entre o gráfico de período único e os gráficos mês a mês (splitChartsByMonth)
+  function buildPeriodoExpo(rows) {
+    return rows.map(r => {
+      if (!r) return 0;
+      const val = r.periodo_expositivo;
+      if (val === 1 || val === "1" || val === true) return 1;
+      return 0;
+    });
+  }
+  function buildPeriodoExpoNomes(rows) {
+    return rows.map(r => {
+      if (!r || (r.periodo_expositivo !== 1 && r.periodo_expositivo !== "1")) return null;
+      return r.periodo_expositivo_nome || null;
+    });
   }
 
   function confPadrao(serie, thresh) {
@@ -572,7 +597,7 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
     analyses: 'Analyses by Measurement Point'
   };
 
-  const temTerreo = terreoDados.length > 0;
+  const temTerreo = terreoDados.length > 0 && content.includeTerreo;
 
   const sensorsData = allData.map(({ sensor, serie, stats, thresh, ocorrencias, mensalAPI, padraoHibrido }) => {
 
@@ -619,9 +644,26 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
     // Usa terreoDados completo (não o subamostrado terreoPts) como fonte de busca —
     // subamostrar os dois lados independentemente fazia quase nenhuma hora bater,
     // deixando a linha do térreo com poucos pontos soltos e ilegível.
-    const terreoAlgn=alignTerreo(serieSub,terreoDados);
-    
-    return { sensor, serie, serieSub, terreoAlgn, stats, thresh:effectiveThresh, conf, ct, cur, monthly, ocorrencias, safeId };
+    const terreoAlgn = temTerreo ? alignTerreo(serieSub,terreoDados) : [];
+
+    // Gráficos mês a mês: subamostra cada mês separadamente (não o período inteiro já
+    // subamostrado em serieSub) — dá resolução própria por mês em vez de espremer o ano
+    // inteiro em MAX_PTS pontos.
+    let monthlySeries = [];
+    if (content.splitChartsByMonth) {
+      const monthGroups = {};
+      serie.forEach(r => {
+        const m = (r.data_hora || '').substring(0, 7);
+        if (!m) return;
+        (monthGroups[m] || (monthGroups[m] = [])).push(r);
+      });
+      monthlySeries = Object.keys(monthGroups).sort().map(mes => {
+        const mSerieSub = subsample(monthGroups[mes], MAX_PTS);
+        return { mes, serieSub: mSerieSub, terreoAlgn: temTerreo ? alignTerreo(mSerieSub, terreoDados) : [] };
+      });
+    }
+
+    return { sensor, serie, serieSub, terreoAlgn, monthlySeries, stats, thresh:effectiveThresh, conf, ct, cur, monthly, ocorrencias, safeId };
   });
 
   const normaLabel = isCustom?'Personalizado':norma.label;
@@ -658,16 +700,16 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
         
         <div style="padding:14px 0">
           <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#8c8278;text-transform:uppercase;margin-bottom:10px;font-weight:600">${tx.total_med}</div>
-          <div style="font-family:monospace;font-size:18px;font-weight:900;color:#0d0d0d">${sensorsData.reduce((sum,d)=>sum+d.serie.length,0).toLocaleString('pt-BR')}</div>
+          <div style="font-family:monospace;font-size:18px;font-weight:900;color:#0d0d0d">${sensorsData.reduce((sum,d)=>sum+d.serie.length,0).toLocaleString(dateLocale)}</div>
         </div>
       </div>
       
       <div style="border-top:2.5px solid #b5a9a1;padding-top:28px;width:100%;text-align:center">
         <div style="font-family:monospace;font-size:10px;color:#8c8278;letter-spacing:2px;font-weight:600">
-          ${tx.generated} ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'}).toUpperCase()}
+          ${tx.generated} ${new Date().toLocaleDateString(dateLocale,{day:'2-digit',month:'long',year:'numeric'}).toUpperCase()}
         </div>
         <div style="font-family:monospace;font-size:9px;color:#a8a29e;letter-spacing:1px;margin-top:6px">
-          ${new Date().toLocaleTimeString('pt-BR')}
+          ${new Date().toLocaleTimeString(dateLocale)}
         </div>
       </div>
     </div>
@@ -871,7 +913,7 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
         ${sensorsDataSorted.map(d=>`
         <tr>
           <td class="td-sensor">${escapeHtml(d.sensor)}</td>
-          <td class="td-num">${d.serie.length.toLocaleString('pt-BR')}</td>
+          <td class="td-num">${d.serie.length.toLocaleString(dateLocale)}</td>
           <td class="td-num">${d.stats.temp_media!=null?d.stats.temp_media+'°C':'–'}</td>
           <td class="td-num">${d.stats.ur_media!=null?d.stats.ur_media+'%':'–'}</td>
           <td class="td-conf td-padrao ${cls(d.conf)}">${pct(d.conf)}</td>
@@ -931,7 +973,7 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
   </div>` : '';
 
   const sensorsDataForPages = content.includeSensors ? sensorsDataSorted : [];
-  const sensorPages = sensorsDataForPages.map(({ sensor, serie, serieSub, terreoAlgn, stats, thresh, conf, ct, cur, monthly, ocorrencias, safeId }) => {
+  const sensorPages = sensorsDataForPages.map(({ sensor, serie, serieSub, terreoAlgn, monthlySeries, stats, thresh, conf, ct, cur, monthly, ocorrencias, safeId }) => {
     const monthlyHtml = monthly.length>1 && content.includeMonthly?`
     <div class="side-block">
       <div class="block-title">${tx.monthly_evolution_label} — ${thresh.label}</div>
@@ -940,7 +982,7 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
         <tbody>${monthly.map(m=>`
           <tr>
             <td>${fmtMonth(m.mes)}</td>
-            <td class="td-num">${m.n.toLocaleString('pt-BR')}</td>
+            <td class="td-num">${m.n.toLocaleString(dateLocale)}</td>
             <td class="td-conf ${cls(m.conf)}">${pct(m.conf)}</td>
             <td class="td-conf ${cls(m.ct)}">${pct(m.ct)}</td>
             <td class="td-conf ${cls(m.cur)}">${pct(m.cur)}</td>
@@ -1005,7 +1047,7 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
       <div class="sensor-hdr">
         <div>
           <div class="sensor-name">${escapeHtml(sensor.toUpperCase())}</div>
-          <div class="sensor-period">${period} &nbsp;·&nbsp; ${serie.length.toLocaleString('pt-BR')} medições</div>
+          <div class="sensor-period">${period} &nbsp;·&nbsp; ${serie.length.toLocaleString(dateLocale)} ${tx.measurements.toLowerCase()}</div>
           ${thresh.equipment?`<div class="equip-label">${escapeHtml(thresh.equipment)}</div>`:''}
         </div>
         <div style="text-align:right">
@@ -1051,7 +1093,11 @@ ${content.includeCharts ? `
           </span>
         </div>
         ${ocorrLegend}
-        <div class="chart-wrap" style="margin-top:12px"><canvas id="${safeId}_T"></canvas></div>
+        ${content.splitChartsByMonth && monthlySeries.length ? monthlySeries.map(mc => `
+        <div class="month-chart-wrap">
+          <div class="month-chart-lbl">${escapeHtml(fmtMonth(mc.mes))}</div>
+          <div class="chart-wrap"><canvas id="${safeId}_T_${mc.mes.replace('-','_')}"></canvas></div>
+        </div>`).join('') : `<div class="chart-wrap" style="margin-top:12px"><canvas id="${safeId}_T"></canvas></div>`}
       </div>
       <div class="chart-block">
         <div class="chart-lbl-row">
@@ -1064,7 +1110,11 @@ ${content.includeCharts ? `
             ${(serieSub.some(r => Number(r.periodo_expositivo) === 1) ? '<span class="leg-item"><span class="leg-expo-swatch"></span>' + tx.in_exhibition + '</span>' : '')}
           </span>
         </div>
-        <div class="chart-wrap" style="margin-top:12px"><canvas id="${safeId}_R"></canvas></div>
+        ${content.splitChartsByMonth && monthlySeries.length ? monthlySeries.map(mc => `
+        <div class="month-chart-wrap">
+          <div class="month-chart-lbl">${escapeHtml(fmtMonth(mc.mes))}</div>
+          <div class="chart-wrap"><canvas id="${safeId}_R_${mc.mes.replace('-','_')}"></canvas></div>
+        </div>`).join('') : `<div class="chart-wrap" style="margin-top:12px"><canvas id="${safeId}_R"></canvas></div>`}
       </div>` : ''}<div class="bottom-row" style="display: flex; gap: 16px; margin-top: 20px;">
         ${monthlyHtml}
         
@@ -1077,6 +1127,7 @@ ${content.includeCharts ? `
         </div>` : ''}
       </div>      
       ${(() => {
+        if (!content.includeDeviations) return '';
         // ESSAS 7 LINHAS SÃO OBRIGATÓRIAS PARA CALCULAR OS VALORES!
         const tot = serie.length || 1;
         const tDentro = serie.filter(d => d.temperatura >= thresh.tMin && d.temperatura <= thresh.tMax).length;
@@ -1093,17 +1144,17 @@ ${content.includeCharts ? `
             <div class="desvio-card ok">
               <div class="desvio-titulo"><span style="color:#15803d">✓</span> ${tx.within_range_label}</div>
               <div class="desvio-kpi" style="color:#15803d">${(tDentro/tot*100).toFixed(1)}%</div>
-              <div class="desvio-sub">${tDentro.toLocaleString('pt-BR')} ${tx.normal_meds}</div>
+              <div class="desvio-sub">${tDentro.toLocaleString(dateLocale)} ${tx.normal_meds}</div>
             </div>
             <div class="desvio-card warn">
               <div class="desvio-titulo"><span style="color:#92400e">↑</span> ${tx.above_limit}</div>
               <div class="desvio-kpi" style="color:#92400e">${(tAcima/tot*100).toFixed(1)}%</div>
-              <div class="desvio-sub">${tAcima.toLocaleString('pt-BR')} medições (${tx.too_hot_label})</div>
+              <div class="desvio-sub">${tAcima.toLocaleString(dateLocale)} ${tx.measurements.toLowerCase()} (${tx.too_hot_label})</div>
             </div>
             <div class="desvio-card" style="background:rgba(37,99,235,0.04);border-color:#bfdbfe">
               <div class="desvio-titulo"><span style="color:#1d4ed8">↓</span> ${tx.below_limit}</div>
               <div class="desvio-kpi" style="color:#1d4ed8">${(tAbaixo/tot*100).toFixed(1)}%</div>
-              <div class="desvio-sub">${tAbaixo.toLocaleString('pt-BR')} medições (${tx.too_cold_label})</div>
+              <div class="desvio-sub">${tAbaixo.toLocaleString(dateLocale)} ${tx.measurements.toLowerCase()} (${tx.too_cold_label})</div>
             </div>
           </div>
 
@@ -1112,17 +1163,17 @@ ${content.includeCharts ? `
             <div class="desvio-card ok">
               <div class="desvio-titulo"><span style="color:#15803d">✓</span> ${tx.within_range_label}</div>
               <div class="desvio-kpi" style="color:#15803d">${(uDentro/tot*100).toFixed(1)}%</div>
-              <div class="desvio-sub">${uDentro.toLocaleString('pt-BR')} ${tx.normal_meds}</div>
+              <div class="desvio-sub">${uDentro.toLocaleString(dateLocale)} ${tx.normal_meds}</div>
             </div>
             <div class="desvio-card" style="background:rgba(217,119,6,0.04);border-color:#fde68a">
               <div class="desvio-titulo"><span style="color:#b45309">↑</span> ${tx.above_limit}</div>
               <div class="desvio-kpi" style="color:#b45309">${(uAcima/tot*100).toFixed(1)}%</div>
-              <div class="desvio-sub">${uAcima.toLocaleString('pt-BR')} medições (${tx.too_humid_label})</div>
+              <div class="desvio-sub">${uAcima.toLocaleString(dateLocale)} ${tx.measurements.toLowerCase()} (${tx.too_humid_label})</div>
             </div>
             <div class="desvio-card bad">
               <div class="desvio-titulo"><span style="color:#991b1b">↓</span> ${tx.below_limit}</div>
               <div class="desvio-kpi" style="color:#991b1b">${(uAbaixo/tot*100).toFixed(1)}%</div>
-              <div class="desvio-sub">${uAbaixo.toLocaleString('pt-BR')} medições (${tx.too_dry_label})</div>
+              <div class="desvio-sub">${uAbaixo.toLocaleString(dateLocale)} ${tx.measurements.toLowerCase()} (${tx.too_dry_label})</div>
             </div>
           </div>
         </div>
@@ -1133,32 +1184,37 @@ ${content.includeCharts ? `
     </div>`;
   });
 
-  const chartPayload = sensorsDataSorted.map(({ sensor, safeId, serieSub, terreoAlgn, thresh, ocorrencias, monthly }) => ({
+  const chartPayload = sensorsDataSorted.map(({ sensor, safeId, serieSub, terreoAlgn, monthlySeries, thresh, ocorrencias, monthly }) => ({
     sensor, safeId, thresh, serie: serieSub, terreo: terreoAlgn,
     // sensor/monthly alimentam o gráfico global de "Tendência de Conformidade Comparativa"
     // (canvas_global_monthly) — sem eles no payload embutido, datasetsGlobal ficava sempre
     // vazio e a página inteira aparecia em branco.
     monthly,
     // Processa período expositivo com validações robustas
-    periodoExpo: serieSub.map(r => {
-      if (!r) return 0;
-      // Aceita 1, "1", true, ou valores que não sejam 0 ou "0"
-      const val = r.periodo_expositivo;
-      if (val === 1 || val === "1" || val === true) return 1;
-      return 0;
-    }),
+    periodoExpo: buildPeriodoExpo(serieSub),
     /* Captura o nome da exposição de cada ponto da série */
-    periodoExpoNomes: serieSub.map(r => {
-      if (!r || r.periodo_expositivo !== 1 && r.periodo_expositivo !== "1") return null;
-      return r.periodo_expositivo_nome || null;
-    }),
+    periodoExpoNomes: buildPeriodoExpoNomes(serieSub),
     ocorrs: (ocorrencias||[]).map(o=>({ dataStr:o.data_inicio||'', color:OCORR_COLORS[o.tipo]||'#888', label:OCORR_LABELS[o.tipo]||o.tipo })),
-    customMarkers: contentSettings.customMarkers || []
+    customMarkers: contentSettings.customMarkers || [],
+    // Gráficos mês a mês (splitChartsByMonth) — ocorrências/marcadores filtrados por mês para
+    // não vazar um evento de março pro gráfico de janeiro (o plugin desenha a marcação no
+    // último ponto do gráfico quando não acha a data exata dentro do período mostrado).
+    monthlyCharts: (monthlySeries || []).map(mc => ({
+      mesKey: mc.mes.replace('-', '_'),
+      serie: mc.serieSub,
+      terreo: mc.terreoAlgn,
+      periodoExpo: buildPeriodoExpo(mc.serieSub),
+      periodoExpoNomes: buildPeriodoExpoNomes(mc.serieSub),
+      ocorrs: (ocorrencias || [])
+        .filter(o => (o.data_inicio || '').substring(0, 7) === mc.mes)
+        .map(o => ({ dataStr: o.data_inicio || '', color: OCORR_COLORS[o.tipo] || '#888', label: OCORR_LABELS[o.tipo] || o.tipo })),
+      customMarkers: (contentSettings.customMarkers || []).filter(m => (m.date || '').substring(0, 7) === mc.mes)
+    }))
   }));
   const dataJSON = JSON.stringify(chartPayload).replace(/<\/script>/gi,'<\\/script>');
 
   const html = `<!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="${lang === 'pt' ? 'pt-BR' : 'en-US'}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -1260,6 +1316,9 @@ body{font-family:'Helvetica Neue',Arial,sans-serif;background:#edeae5;color:#1a1
 .desvio-kpi { font-size: 26px; font-weight: 700; font-family: monospace; line-height: 1; margin-bottom: 6px; }
 .desvio-sub { font-size: 11px; color: #6b6057; }
 .chart-block { margin-bottom: 24px; }
+.month-chart-wrap { margin-top: 20px; padding-top: 14px; border-top: 1px dashed #d0ccc5; }
+.month-chart-wrap:first-of-type { margin-top: 12px; }
+.month-chart-lbl { font-family: monospace; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #5a5350; text-transform: uppercase; margin-bottom: 8px; }
 .chart-lbl-row { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 6px; }
 .chart-lbl { font-family: monospace; font-size: 11px; font-weight: 700; color: #0d0d0d; text-transform: uppercase; letter-spacing: 1px; }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 12px; justify-content: flex-end; align-items: center; max-width: 75%; }
@@ -1292,6 +1351,19 @@ ${dataJSON}
 (function(){
 var DATA = JSON.parse(document.getElementById('report-data').textContent);
 
+// Rótulos traduzidos no momento da geração do relatório (idioma fixo, definido em ${JSON.stringify(lang)})
+var L_MAX = ${JSON.stringify(lang === 'pt' ? 'Máx: ' : 'Max: ')};
+var L_MIN = ${JSON.stringify(lang === 'pt' ? 'Mín: ' : 'Min: ')};
+var L_DATETIME = ${JSON.stringify(lang === 'pt' ? 'Data/Hora: ' : 'Date/Time: ')};
+var L_SENSOR = ${JSON.stringify(lang === 'pt' ? 'Sensor: ' : 'Sensor: ')};
+var L_CONFORME = ${JSON.stringify(lang === 'pt' ? ' ✓ Conforme' : ' ✓ Compliant')};
+var L_FORA = ${JSON.stringify(lang === 'pt' ? ' ✗ Fora' : ' ✗ Out of range')};
+var L_EM_EXPO_TOOLTIP = ${JSON.stringify(lang === 'pt' ? ' | Em exposição' : ' | On exhibition')};
+var L_TERREO_REF = ${JSON.stringify(lang === 'pt' ? 'Térreo (ref): ' : 'Ground Floor (ref): ')};
+var L_TERREO_LABEL = ${JSON.stringify(lang === 'pt' ? 'Térreo' : 'Ground Floor')};
+var L_EM_EXPOSICAO = ${JSON.stringify(lang === 'pt' ? 'EM EXPOSIÇÃO' : 'ON EXHIBITION')};
+var L_SEM_EXPOSICAO = ${JSON.stringify(lang === 'pt' ? 'SEM EXPOSIÇÃO' : 'NOT ON EXHIBITION')};
+
 var zonaPlugin={id:'zonaPlugin',afterDraw:function(chart){
   var ds0=chart.data.datasets[0];if(!ds0||!ds0._zm)return;
   var zm=ds0._zm,ctx=chart.ctx,xs=chart.scales.x,ys=chart.scales.y;
@@ -1303,8 +1375,8 @@ var zonaPlugin={id:'zonaPlugin',afterDraw:function(chart){
   [pY1,pY2].forEach(function(py){if(py>aT && py<aB){ctx.beginPath();ctx.moveTo(aL,py);ctx.lineTo(aR,py);ctx.stroke();}});
   ctx.setLineDash([]);
   ctx.fillStyle='rgba(22,163,74,0.75)';ctx.font='bold 10px monospace';
-  if(pY1>aT) ctx.fillText('Máx: '+zm.zMax+zm.unit,aL+8,pY1-7);
-  if(pY2<aB) ctx.fillText('Mín: '+zm.zMin+zm.unit,aL+8,pY2+16);
+  if(pY1>aT) ctx.fillText(L_MAX+zm.zMax+zm.unit,aL+8,pY1-7);
+  if(pY2<aB) ctx.fillText(L_MIN+zm.zMin+zm.unit,aL+8,pY2+16);
   if(zm.ocorrs&&zm.rawLabels){zm.ocorrs.forEach(function(o){
     var oTs=(o.dataStr||'').substring(0,16);
     var idx=zm.rawLabels.findIndex(function(l){return l.substring(0,16)>=oTs;});
@@ -1336,7 +1408,7 @@ function mkChart(id,color,sensorData,rawLabels,unit,zMin,zMax,terreoData,ocorrs,
     _zm:{zMin:zMin,zMax:zMax,unit:unit,rawLabels:rawLabels,ocorrs:ocorrs||[], customMarkers: customMarkers||[]}
   }];
   
-  if(terreoData && terreoData.length) datasets.push({label:'Térreo', data:terreoData, borderColor:'#94a3b8', borderWidth: 1, borderDash:[6, 4], pointRadius:0, fill:false, tension: 0.4, spanGaps: true});
+  if(terreoData && terreoData.length) datasets.push({label:L_TERREO_LABEL, data:terreoData, borderColor:'#94a3b8', borderWidth: 1, borderDash:[6, 4], pointRadius:0, fill:false, tension: 0.4, spanGaps: true});
 
   var expoShadingPlugin={id:'expoShading',afterDraw:function(chart){
     if(!periodoExpo||!periodoExpo.length)return;
@@ -1383,7 +1455,7 @@ function mkChart(id,color,sensorData,rawLabels,unit,zMin,zMax,terreoData,ocorrs,
       // canvas) em vez de no topo — lá em cima ele ficava por cima das linhas de temperatura/
       // umidade e virava poluição visual em gráficos com muita informação.
       if(w>30){
-        var base=emExpo?'EM EXPOSIÇÃO':'SEM EXPOSIÇÃO';
+        var base=emExpo?L_EM_EXPOSICAO:L_SEM_EXPOSICAO;
         var label=base;
         ctx.font='600 9px "IBM Plex Mono", monospace';
         ctx.textAlign='left';
@@ -1445,7 +1517,7 @@ function mkChart(id,color,sensorData,rawLabels,unit,zMin,zMax,terreoData,ocorrs,
       },
       plugins:{
         legend:{display:false},
-        tooltip:{backgroundColor:'#1a1614',titleColor:'#fafafa',bodyColor:'#c0ae9f',borderColor:'#5a5350',borderWidth:1.2,cornerRadius:3,padding:{x:14,y:11},titleFont:{family:'monospace',size:11,weight:'bold'},bodyFont:{family:'monospace',size:11},callbacks:{title:function(items){return 'Data/Hora: '+(rawLabels[items[0].dataIndex]||'');},label:function(ctx){var v=ctx.parsed.y;if(v==null)return null;if(ctx.datasetIndex===0){var expo=periodoExpo&&periodoExpo.length>ctx.dataIndex&&periodoExpo[ctx.dataIndex]===1;var status=(v>=zMin&&v<=zMax)?' ✓ Conforme':' ✗ Fora';return'Sensor: '+v.toFixed(2)+unit+status+(expo?' | Em exposição':'');}if(ctx.datasetIndex===1&&terreoData&&terreoData.length)return'Térreo (ref): '+v.toFixed(2)+unit;return null;}}}
+        tooltip:{backgroundColor:'#1a1614',titleColor:'#fafafa',bodyColor:'#c0ae9f',borderColor:'#5a5350',borderWidth:1.2,cornerRadius:3,padding:{x:14,y:11},titleFont:{family:'monospace',size:11,weight:'bold'},bodyFont:{family:'monospace',size:11},callbacks:{title:function(items){return L_DATETIME+(rawLabels[items[0].dataIndex]||'');},label:function(ctx){var v=ctx.parsed.y;if(v==null)return null;if(ctx.datasetIndex===0){var expo=periodoExpo&&periodoExpo.length>ctx.dataIndex&&periodoExpo[ctx.dataIndex]===1;var status=(v>=zMin&&v<=zMax)?L_CONFORME:L_FORA;return L_SENSOR+v.toFixed(2)+unit+status+(expo?L_EM_EXPO_TOOLTIP:'');}if(ctx.datasetIndex===1&&terreoData&&terreoData.length)return L_TERREO_REF+v.toFixed(2)+unit;return null;}}}
       }
     },
     plugins: [expoShadingPlugin, customEventPlugin]
@@ -1458,18 +1530,30 @@ var datasetsGlobal = [];
 var colors = ['#E30613', '#2563eb', '#d97706', '#7c3aed', '#059669', '#db2777', '#4b5563'];
 
 DATA.forEach(function(d, idx){
-  // 1. Gráficos individuais (o que já funcionava)
-  var temps = d.serie.map(function(r){return r?r.temperatura:null;});
-  var hums = d.serie.map(function(r){return r?r.umidade:null;});
-  var rawLabels = d.serie.map(function(r){return r?r.data_hora:null;});
-  var tT = d.terreo?d.terreo.map(function(r){return r?r.temperatura:null;}):[];
-  var urT = d.terreo?d.terreo.map(function(r){return r?r.umidade:null;}):[];
-  var pExpo = d.periodoExpo||[];
-  var pExpoNomes = d.periodoExpoNomes||[];
-  var cMarkers = d.customMarkers||[];
-  
-  mkChart(d.safeId+'_T','#c0392b',temps,rawLabels,'°C',d.thresh.tMin,d.thresh.tMax,tT,d.ocorrs,pExpo,pExpoNomes,cMarkers);
-  mkChart(d.safeId+'_R','#1d4ed8',hums,rawLabels,'%',d.thresh.urMin,d.thresh.urMax,urT,d.ocorrs,pExpo,pExpoNomes,cMarkers);
+  // 1. Gráficos individuais — mês a mês (splitChartsByMonth) ou período único
+  if (d.monthlyCharts && d.monthlyCharts.length) {
+    d.monthlyCharts.forEach(function(mc){
+      var mTemps = mc.serie.map(function(r){return r?r.temperatura:null;});
+      var mHums = mc.serie.map(function(r){return r?r.umidade:null;});
+      var mRawLabels = mc.serie.map(function(r){return r?r.data_hora:null;});
+      var mTT = mc.terreo?mc.terreo.map(function(r){return r?r.temperatura:null;}):[];
+      var mUrT = mc.terreo?mc.terreo.map(function(r){return r?r.umidade:null;}):[];
+      mkChart(d.safeId+'_T_'+mc.mesKey,'#c0392b',mTemps,mRawLabels,'°C',d.thresh.tMin,d.thresh.tMax,mTT,mc.ocorrs,mc.periodoExpo,mc.periodoExpoNomes,mc.customMarkers);
+      mkChart(d.safeId+'_R_'+mc.mesKey,'#1d4ed8',mHums,mRawLabels,'%',d.thresh.urMin,d.thresh.urMax,mUrT,mc.ocorrs,mc.periodoExpo,mc.periodoExpoNomes,mc.customMarkers);
+    });
+  } else {
+    var temps = d.serie.map(function(r){return r?r.temperatura:null;});
+    var hums = d.serie.map(function(r){return r?r.umidade:null;});
+    var rawLabels = d.serie.map(function(r){return r?r.data_hora:null;});
+    var tT = d.terreo?d.terreo.map(function(r){return r?r.temperatura:null;}):[];
+    var urT = d.terreo?d.terreo.map(function(r){return r?r.umidade:null;}):[];
+    var pExpo = d.periodoExpo||[];
+    var pExpoNomes = d.periodoExpoNomes||[];
+    var cMarkers = d.customMarkers||[];
+
+    mkChart(d.safeId+'_T','#c0392b',temps,rawLabels,'°C',d.thresh.tMin,d.thresh.tMax,tT,d.ocorrs,pExpo,pExpoNomes,cMarkers);
+    mkChart(d.safeId+'_R','#1d4ed8',hums,rawLabels,'%',d.thresh.urMin,d.thresh.urMax,urT,d.ocorrs,pExpo,pExpoNomes,cMarkers);
+  }
 
   // 2. Acumula dados para o gráfico global mensal
   if (d.monthly && d.monthly.length > 0) {
@@ -1510,7 +1594,9 @@ if (canvasGlobal && datasetsGlobal.length > 0) {
 
 function fmtMonth(str) {
   if (!str) return '';
-  var MN=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  var MN = ${JSON.stringify(lang === 'pt'
+    ? ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+    : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'])};
   var p=str.split('-'); return p.length>=2 ? MN[parseInt(p[1])-1] + ' ' + p[0] : str;
 }
 
