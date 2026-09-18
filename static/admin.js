@@ -1080,11 +1080,11 @@ function openReportWindow(allData, dateIni, dateFim, terreoDados, padrao, conten
       </div>
 <div class="stats-strip">
  <div class="stat-card">
-        <span class="stat-lbl">T média</span>
+        <span class="stat-lbl">${tx.temp_avg}</span>
         <span class="stat-val">${stats.temp_media!=null?stats.temp_media+'°C':'–'}</span>
     </div>
     <div class="stat-card">
-        <span class="stat-lbl">UR média</span>
+        <span class="stat-lbl">${tx.ur_avg}</span>
         <span class="stat-val">${stats.ur_media != null ? stats.ur_media + '%' : '–'}</span>
     </div>
     <div class="stat-card stat-padrao">
